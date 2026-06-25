@@ -1,60 +1,71 @@
+import fs from "fs";
+import path from "path";
 import type { AuditEvent, AgentType, FinancialEvent } from "../../model/types";
 import { runSupervisor } from "../../agents/supervisor";
 
-let watcherTimer: ReturnType<typeof setInterval> | null = null;
+let watcherStopped = false;
+
+function writeWatcherStatus(state: string, findingsCount?: number): void {
+  try {
+    const dir = path.join(process.cwd(), ".audit");
+    fs.mkdirSync(dir, { recursive: true });
+    fs.writeFileSync(
+      path.join(dir, "watcher.json"),
+      JSON.stringify({
+        pid: process.pid,
+        state,
+        lastRun: new Date().toISOString(),
+        findingsCount: findingsCount ?? 0,
+      })
+    );
+  } catch { }
+}
 
 export async function investigate(
   type?: AgentType,
   watch?: boolean
 ): Promise<AsyncGenerator<AuditEvent>> {
-  if (watch && watcherTimer) {
-    async function* alreadyRunning(): AsyncGenerator<AuditEvent> {
-      yield { type: "step", agent: "investigate", message: "Watch mode already active." };
-    }
-    return alreadyRunning();
-  }
-
   async function* gen(): AsyncGenerator<AuditEvent> {
     const trigger: FinancialEvent = {
       type: "daily_tick",
       timestamp: new Date().toISOString(),
     };
 
-    if (watch) {
-      yield { type: "step", agent: "investigate", message: "Starting watch mode (30s interval)..." };
+    const runCycle = async function* (): AsyncGenerator<AuditEvent> {
+      writeWatcherStatus("running");
+      let cycleFindings = 0;
       const stream = await runSupervisor(trigger, type);
       for await (const event of stream) {
         yield event;
+        if (event.type === "finding") cycleFindings++;
+        if (event.type === "done") writeWatcherStatus("idle", cycleFindings);
       }
-      const runWatchCycle = async () => {
-        try {
-          const stream = await runSupervisor(trigger, type);
-          for await (const event of stream) {
-            if (event.type === "step" || event.type === "finding") {
-              console.log(`[watch] ${event.type}: ${(event as any).message ?? (event as any).finding?.title ?? ""}`);
-            }
-          }
-        } catch (err) {
-          console.error("Watch mode error:", err);
-        }
-      };
-      watcherTimer = setInterval(runWatchCycle, 30_000);
-      yield { type: "step", agent: "investigate", message: "Watch mode active. Press Ctrl+C to stop." };
+    };
+
+    if (watch) {
+      yield { type: "step", agent: "investigate", message: "Starting watch mode (30s interval)..." };
+      yield* runCycle();
+      while (!watcherStopped) {
+        yield { type: "step", agent: "investigate", message: `Waiting 30s until next check...` };
+        await new Promise((resolve) => setTimeout(resolve, 30_000));
+        if (watcherStopped) break;
+        yield* runCycle();
+      }
+      yield { type: "step", agent: "investigate", message: "Watch mode stopped." };
       return;
     }
 
-    const stream = await runSupervisor(trigger, type);
-    for await (const event of stream) {
-      yield event;
-    }
+    yield* runCycle();
   }
 
   return gen();
 }
 
 export function stopWatcher(): void {
-  if (watcherTimer) {
-    clearInterval(watcherTimer);
-    watcherTimer = null;
-  }
+  watcherStopped = true;
+  writeWatcherStatus("stopped");
+}
+
+export function getWatcherStatus(): { running: boolean } {
+  return { running: !watcherStopped };
 }

@@ -50,14 +50,23 @@ export function parseCsvFile<T = any>(filePath: string, type?: string): ParseRes
   let content: string;
 
   try {
-    content = fs.readFileSync(filePath, "utf-8");
+    const buffer = fs.readFileSync(filePath);
+    content = new TextDecoder("utf-8", { fatal: true }).decode(buffer);
   } catch (err: any) {
-    result.errors.push({ line: 0, message: `Cannot read file: ${err.message}` });
+    if (err instanceof TypeError || err.message?.includes("encoding") || err.message?.includes("decode") || err.message?.includes("invalid")) {
+      result.errors.push({ line: 0, message: "File is not valid UTF-8", hint: "Ensure the file is saved as UTF-8 encoding" });
+    } else if (err.code === "ENOENT") {
+      result.errors.push({ line: 0, message: `File not found: ${filePath}`, hint: "Check the file path and try again" });
+    } else if (err.code === "EISDIR") {
+      result.errors.push({ line: 0, message: `Path is a directory, not a file: ${filePath}` });
+    } else {
+      result.errors.push({ line: 0, message: `Cannot read file: ${err.message}` });
+    }
     return result;
   }
 
   if (!content.trim()) {
-    result.errors.push({ line: 0, message: "File is empty" });
+    result.errors.push({ line: 0, message: "CSV file is empty", hint: "Add data rows with headers or use a different file" });
     return result;
   }
 

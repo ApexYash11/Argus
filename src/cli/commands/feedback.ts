@@ -25,6 +25,18 @@ export async function submitFeedback(
     incrementDismissCount(findingId);
     const cal = getCalibration(finding.agentType, finding.vendorId);
     const newCount = (cal?.dismissCount ?? 0) + 1;
+    if (newCount >= 3) {
+      const thresholdOverride = Math.min(0.95, 0.7 + newCount * 0.05);
+      upsertCalibration({
+        workspaceId: "default",
+        agentType: finding.agentType,
+        vendorId: finding.vendorId,
+        thresholdOverride,
+        dismissCount: newCount,
+        lastUpdated: new Date().toISOString(),
+      });
+      return { message: `Finding dismissed. Calibration auto-tuned (threshold raised to ${(thresholdOverride * 100).toFixed(0)}%, ${newCount} dismissals).` };
+    }
     upsertCalibration({
       workspaceId: "default",
       agentType: finding.agentType,
@@ -32,9 +44,6 @@ export async function submitFeedback(
       dismissCount: newCount,
       lastUpdated: new Date().toISOString(),
     });
-    if (newCount >= 3) {
-      return { message: "Finding dismissed. Calibration auto-tuned (3+ dismissals)." };
-    }
   }
 
   return { message: `Finding ${findingId} ${action}d` };
