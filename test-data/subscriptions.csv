@@ -1,0 +1,21 @@
+vendor,monthly_amount,seat_count,renewal_date
+Slack,1800,45,2025-08-15
+Zoom,1200,40,2025-07-01
+Notion,800,35,2025-09-01
+Figma,4500,14,2025-08-01
+Jira,2500,30,2025-10-01
+Confluence,1500,30,2025-10-01
+GitHub,2000,25,2025-11-01
+AWS,45000,1,2025-12-01
+HubSpot,15000,8,2025-09-15
+Salesforce,30000,12,2025-07-15
+Mailchimp,3000,3,2025-08-01
+Intercom,8000,5,2025-11-15
+Datadog,12000,1,2025-10-01
+PagerDuty,2500,10,2025-09-01
+Discord,0,40,2025-12-31
+Google Workspace,2500,48,2025-08-01
+Microsoft 365,0,5,2025-06-01
+Asana,1500,20,2025-07-01
+Loom,1200,15,2025-09-01
+Calendly,600,10,2025-08-15

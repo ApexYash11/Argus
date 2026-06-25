@@ -1,0 +1,23 @@
+# AI Spend Auditor Configuration
+company: My Company
+currency: INR
+minRunwayMonths: 8
+minOperatingReserve: 0
+maxIterations: 5
+confidenceFloor: 0.7
+scratchpad:
+  retentionCount: 30
+policy:
+  maxExpenseWithoutReceipt: 500
+  perCategoryLimits:
+    meals: 5000
+    travel: 15000
+    office-supplies: 5000
+    client-entertainment: 20000
+  prohibitedCategories:
+    - alcohol
+  submissionWindowDays: 30
+  preApprovalThreshold: 25000
+  perDiemLimits:
+    executive: 10000
+    staff: 5000
