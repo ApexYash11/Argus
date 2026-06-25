@@ -110,4 +110,16 @@ CREATE TABLE IF NOT EXISTS contract_terms (
   extracted_from TEXT,
   extracted_at TEXT DEFAULT (datetime('now'))
 );
+
+CREATE TABLE IF NOT EXISTS usage_records (
+  id TEXT PRIMARY KEY,
+  employee_email TEXT NOT NULL,
+  tool TEXT NOT NULL,
+  last_login TEXT NOT NULL,
+  vendor_id TEXT,
+  ingested_at TEXT DEFAULT (datetime('now'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_usage_tool ON usage_records(tool);
+CREATE INDEX IF NOT EXISTS idx_usage_employee ON usage_records(employee_email);
 `;

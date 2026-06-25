@@ -7,6 +7,13 @@ export async function investigate(
   type?: AgentType,
   watch?: boolean
 ): Promise<AsyncGenerator<AuditEvent>> {
+  if (watch && watcherTimer) {
+    async function* alreadyRunning(): AsyncGenerator<AuditEvent> {
+      yield { type: "step", agent: "investigate", message: "Watch mode already active." };
+    }
+    return alreadyRunning();
+  }
+
   async function* gen(): AsyncGenerator<AuditEvent> {
     const trigger: FinancialEvent = {
       type: "daily_tick",
@@ -19,10 +26,19 @@ export async function investigate(
       for await (const event of stream) {
         yield event;
       }
-      watcherTimer = setInterval(async () => {
-        const stream = await runSupervisor(trigger, type);
-        for await (const _ of stream) { /* re-run in background */ }
-      }, 30_000);
+      const runWatchCycle = async () => {
+        try {
+          const stream = await runSupervisor(trigger, type);
+          for await (const event of stream) {
+            if (event.type === "step" || event.type === "finding") {
+              console.log(`[watch] ${event.type}: ${(event as any).message ?? (event as any).finding?.title ?? ""}`);
+            }
+          }
+        } catch (err) {
+          console.error("Watch mode error:", err);
+        }
+      };
+      watcherTimer = setInterval(runWatchCycle, 30_000);
       yield { type: "step", agent: "investigate", message: "Watch mode active. Press Ctrl+C to stop." };
       return;
     }

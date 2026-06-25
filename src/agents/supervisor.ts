@@ -19,6 +19,7 @@ export async function runSupervisor(
     : (Object.keys(agentImpls) as AgentType[]);
 
   async function* gen(): AsyncGenerator<AuditEvent> {
+    const startTime = performance.now();
     initScratchpad(process.cwd());
     writeScratchpadEntry({ type: "supervisor_start", message: `Trigger: ${trigger.type}` });
 
@@ -28,6 +29,7 @@ export async function runSupervisor(
       description: `Supervisor routing trigger: ${trigger.type}`,
     };
 
+    let findingsCount = 0;
     for (const agentType of agents) {
       const def = agentImpls[agentType];
       if (!def) {
@@ -42,14 +44,28 @@ export async function runSupervisor(
       };
 
       try {
+        const eventsBuffer: AuditEvent[] = [];
         const state = await runInvestigation(trigger, agentType, def, (event) => {
           writeScratchpadEntry({ type: "agent_event", agent: agentType, message: JSON.stringify(event) });
+          eventsBuffer.push(event);
         }, config);
 
-        if (state.finding) {
-          yield { type: "finding", finding: state.finding };
+        let hadFinding = false;
+        for (const event of eventsBuffer) {
+          yield event;
+          if (event.type === "finding") hadFinding = true;
+        }
+
+        if (hadFinding) {
+          findingsCount++;
         } else {
-          yield { type: "step", agent: agentType, message: `No finding — confidence ${(state.confidence * 100).toFixed(0)}% below floor` };
+          const floor = config?.confidenceFloor ?? 0.7;
+          const pct = (state.confidence * 100).toFixed(0);
+          if (state.confidence >= floor) {
+            yield { type: "step", agent: agentType, message: `No new finding — duplicate (confidence ${pct}% passed floor but already exists)` };
+          } else {
+            yield { type: "step", agent: agentType, message: `No finding — confidence ${pct}% below ${(floor * 100).toFixed(0)}% floor` };
+          }
         }
       } catch (err: any) {
         yield { type: "step", agent: agentType, message: `Error: ${err.message}` };
@@ -58,7 +74,7 @@ export async function runSupervisor(
     }
 
     pruneScratchpad(process.cwd());
-    yield { type: "done", totalFindings: 0, durationMs: 0 };
+    yield { type: "done", totalFindings: findingsCount, durationMs: Math.round(performance.now() - startTime) };
   }
 
   return gen();

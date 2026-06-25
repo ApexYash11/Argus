@@ -1,23 +1,26 @@
 import type { AgentContext } from "../state-machine";
 
 export async function scoreConfidence(ctx: AgentContext): Promise<{ score: number; reason: string }> {
-  const { evidence } = ctx.state;
+  const { evidence, comparisons } = ctx.state;
 
   let score = 0.5;
   const reasons: string[] = [];
 
-  if (evidence.length > 1) {
+  const meaningfulEvidence = evidence.filter((e) => e.key !== "total_records" && e.key !== "total_vendors");
+  if (meaningfulEvidence.length >= 2) {
     score += 0.1;
-    reasons.push(`${evidence.length} evidence items collected`);
+    reasons.push(`${meaningfulEvidence.length} meaningful evidence item(s)`);
   }
 
-  const hasComparisons = ctx.state.comparisons.length > 0;
-  if (hasComparisons) {
-    score += 0.15;
-    reasons.push(`${ctx.state.comparisons.length} comparison(s) available`);
+  if (comparisons.length > 0) {
+    score += Math.min(comparisons.length * 0.1, 0.25);
+    reasons.push(`${comparisons.length} comparison(s) available`);
+  } else {
+    score -= 0.1;
+    reasons.push("no comparisons generated");
   }
 
-  score = Math.min(score, 0.95);
+  score = Math.max(0, Math.min(score, 0.95));
 
   return {
     score: Math.round(score * 100) / 100,

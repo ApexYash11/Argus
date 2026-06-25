@@ -1,4 +1,4 @@
-import type { InvestigationState, AuditEvent, AgentType, FinancialEvent, Comparison } from "../model/types";
+import type { InvestigationState, AuditEvent, AgentType, FinancialEvent, Comparison, AppConfig } from "../model/types";
 import { classifyEvent } from "./nodes/classify";
 import { retrieveEvidence } from "./nodes/retrieve-evidence";
 import { runComparison } from "./nodes/run-comparison";
@@ -12,7 +12,7 @@ export interface AgentContext {
   agentType: AgentType;
   state: InvestigationState;
   emit: (event: AuditEvent) => void;
-  agents: Record<AgentType, AgentDefinition>;
+  config?: { maxIterations?: number; confidenceFloor?: number };
 }
 
 export interface AgentDefinition {
@@ -42,9 +42,15 @@ export async function runInvestigation(
     events: [],
   };
 
-  const ctx: AgentContext = { agentType, state, emit, agents: {} as any };
+  function recordEvent(event: AuditEvent): void {
+    const stamped = { ...event, timestamp: new Date().toISOString() };
+    state.events.push(stamped);
+    if (event.type !== "done") emit(stamped);
+  }
 
-  emit({ type: "agent_start", agent: agentType, description: `Starting ${agentType} investigation` });
+  const ctx: AgentContext = { agentType, state, emit: recordEvent, config };
+
+  recordEvent({ type: "agent_start", agent: agentType, description: `Starting ${agentType} investigation` });
 
   await agentDef.classify(ctx);
   state.iterations++;
@@ -56,9 +62,7 @@ export async function runInvestigation(
     const { score, reason } = await agentDef.score(ctx);
     state.confidence = score;
 
-    emit({ type: "confidence", score, reason });
-
-    state.events.push({ type: "confidence", score, reason } as any);
+    recordEvent({ type: "confidence", score, reason });
 
     if (score >= floor) {
       await generateFinding(ctx);
@@ -67,9 +71,9 @@ export async function runInvestigation(
 
     if (state.iterations >= maxIters) break;
     state.iterations++;
-    emit({ type: "step", agent: agentType, message: `Confidence ${(score * 100).toFixed(0)}% < ${(floor * 100).toFixed(0)}% floor, re-investigating (pass ${state.iterations})` });
+    recordEvent({ type: "step", agent: agentType, message: `Confidence ${(score * 100).toFixed(0)}% < ${(floor * 100).toFixed(0)}% floor, re-investigating (pass ${state.iterations})` });
   }
 
-  emit({ type: "done", totalFindings: state.finding ? 1 : 0, durationMs: 0 });
+  state.events.push({ type: "done", totalFindings: state.finding ? 1 : 0, durationMs: 0, timestamp: new Date().toISOString() });
   return state;
 }

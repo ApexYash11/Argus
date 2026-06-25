@@ -1,9 +1,10 @@
 import path from "path";
+import crypto from "crypto";
 import type { AuditEvent } from "../../model/types";
 import { parseCsvFile } from "../../ingest/csv-parser";
-import { normalizeRecord } from "../../ingest/normalizer";
+import { normalizeRecord, normalizeUsageRecord } from "../../ingest/normalizer";
 import { extractPdf, extractInvoiceFields } from "../../ingest/pdf-extractor";
-import { insertFinancialRecord } from "../../db/queries";
+import { insertFinancialRecord, insertUsageRecord } from "../../db/queries";
 import { getDb } from "../../db/index";
 import { writeScratchpadEntry, initScratchpad } from "../../engine/scratchpad";
 
@@ -43,6 +44,28 @@ export async function ingestFile(
 
       let ingestedCount = 0;
       for (const raw of result.records) {
+        const usageRecord = normalizeUsageRecord(raw);
+        if (usageRecord) {
+          const id = `USAGE-${Date.now().toString(36).toUpperCase()}${crypto.randomBytes(3).toString("hex").toUpperCase()}`;
+          insertUsageRecord({
+            id,
+            employeeEmail: usageRecord.employeeEmail,
+            tool: usageRecord.tool,
+            lastLogin: usageRecord.lastLogin,
+            vendorId: usageRecord.vendorId,
+            ingestedAt: new Date().toISOString(),
+          });
+          yield {
+            type: "evidence_found",
+            key: id,
+            value: `Usage: ${usageRecord.employeeEmail} → ${usageRecord.tool} (last: ${usageRecord.lastLogin})`,
+            sourceDocId: id,
+          };
+          ingestedCount++;
+          writeScratchpadEntry({ type: "record_ingested", message: `Usage: ${usageRecord.employeeEmail} → ${usageRecord.tool}` });
+          continue;
+        }
+
         const { record, vendorResolution } = normalizeRecord(raw);
 
         yield {

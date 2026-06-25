@@ -14,14 +14,12 @@ export async function generateFinding(ctx: AgentContext): Promise<Finding | null
   const fingerprint = generateFingerprint(agentType, vendorId, amount, periodStart);
   const existing = findExistingFingerprint(fingerprint);
   if (existing) {
-    ctx.state.finding = existing;
-    insertFinding(existing);
     if (existing.status === "open") {
       ctx.emit({ type: "step", agent: agentType, message: `Duplicate finding skipped (${existing.id} already open)` });
     } else {
       ctx.emit({ type: "step", agent: agentType, message: `Finding ${existing.id} previously ${existing.status}, skipping` });
     }
-    return existing;
+    return null;
   }
 
   const findingId = generateFindingId();

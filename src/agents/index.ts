@@ -1,7 +1,11 @@
+import "./saas-waste";
+import "./duplicate-payments";
+import "./policy-violations";
+import "./reconciliation";
+
 import { registerAgent } from "./supervisor";
 import type { Comparison, FinancialRecord } from "../model/types";
-import type { AgentDefinition } from "./state-machine";
-import { getFinancialRecordsByType, getFinancialRecordsByVendor, getAllFinancialRecords } from "../db/queries";
+import { getAllFinancialRecords } from "../db/queries";
 
 function registerBaseAgent(agentType: string, analyze: (records: FinancialRecord[]) => Comparison[]): void {
   registerAgent(agentType as any, {
@@ -15,9 +19,10 @@ function registerBaseAgent(agentType: string, analyze: (records: FinancialRecord
         value: String(records.length),
         sourceDocId: "db",
       }];
+      (ctx.state as any)._cachedRecords = records;
     },
     async compare(ctx) {
-      const records = getAllFinancialRecords();
+      const records = (ctx.state as any)._cachedRecords ?? getAllFinancialRecords();
       return analyze(records);
     },
     async score(ctx) {
@@ -30,38 +35,6 @@ function registerBaseAgent(agentType: string, analyze: (records: FinancialRecord
     },
   });
 }
-
-registerBaseAgent("saas-waste", (records) => {
-  const subs = records.filter((r) => r.type === "subscription");
-  return subs.map((s) => ({
-    label: s.vendorId,
-    expected: "active subscription",
-    actual: `${s.amount} ${s.currency}/mo`,
-  }));
-});
-
-registerBaseAgent("duplicate-payments", (records) => {
-  const payments = records.filter((r) => r.type === "payment");
-  const seen = new Map<string, FinancialRecord[]>();
-  for (const p of payments) {
-    const key = `${p.vendorId}|${p.amount}`;
-    const existing = seen.get(key) ?? [];
-    existing.push(p);
-    seen.set(key, existing);
-  }
-  const dups: Comparison[] = [];
-  for (const [key, group] of seen) {
-    if (group.length > 1) {
-      dups.push({
-        label: `Duplicate: ${key}`,
-        expected: "1 payment",
-        actual: `${group.length} payments totalling ${group.reduce((s, p) => s + p.amount, 0)}`,
-        delta: `${group.length - 1} extra payment(s)`,
-      });
-    }
-  }
-  return dups;
-});
 
 registerBaseAgent("vendor-overbilling", (records) => {
   const invoices = records.filter((r) => r.type === "invoice");
@@ -85,29 +58,6 @@ registerBaseAgent("vendor-overbilling", (records) => {
   return result;
 });
 
-registerBaseAgent("policy-violations", (records) => {
-  const expenses = records.filter((r) => r.type === "expense");
-  return expenses.map((e) => ({
-    label: e.vendorId,
-    expected: "within policy",
-    actual: `${e.amount} ${e.currency}`,
-    delta: e.description,
-  }));
-});
-
-registerBaseAgent("reconciliation", (records) => {
-  const invoices = records.filter((r) => r.type === "invoice");
-  const payments = records.filter((r) => r.type === "payment");
-  const invTotal = invoices.reduce((s, i) => s + i.amount, 0);
-  const payTotal = payments.reduce((s, p) => s + p.amount, 0);
-  return [{
-    label: "Invoices vs Payments",
-    expected: `${invoices.length} invoices (${invTotal})`,
-    actual: `${payments.length} payments (${payTotal})`,
-    delta: `${((invTotal - payTotal) / (invTotal || 1) * 100).toFixed(1)}% gap`,
-  }];
-});
-
 registerBaseAgent("anomaly-detection", (records) => {
   const payments = records.filter((r) => r.type === "payment");
   const byMonth = new Map<string, number>();
@@ -117,13 +67,17 @@ registerBaseAgent("anomaly-detection", (records) => {
   }
   const months = [...byMonth.entries()].sort((a, b) => a[0].localeCompare(b[0]));
   if (months.length < 2) return [];
-  const avg = months.slice(0, -1).reduce((s, [, v]) => s + v, 0) / (months.length - 1);
-  const last = months[months.length - 1][1];
+  const priorMonths = months.slice(0, -1);
+  const priorSum = priorMonths.reduce((s, [, v]) => s + v, 0);
+  if (priorSum === 0) return [];
+  const avg = priorSum / priorMonths.length;
+  const last = months[months.length - 1]![1];
+  const pct = avg !== 0 ? ((last - avg) / avg * 100).toFixed(0) : "n/a";
   return [{
     label: "Monthly spend trend",
-    expected: `${avg.toFixed(0)} avg (${months.length - 1} months)`,
+    expected: `${avg.toFixed(0)} avg (${priorMonths.length} months)`,
     actual: `${last} current month`,
-    delta: last > avg ? `+${((last - avg) / avg * 100).toFixed(0)}% above avg` : `${((avg - last) / avg * 100).toFixed(0)}% below avg`,
+    delta: last > avg ? `+${pct}% above avg` : `${Math.abs(Number(pct))}% below avg`,
   }];
 });
 

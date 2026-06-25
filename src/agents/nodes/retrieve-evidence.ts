@@ -32,12 +32,22 @@ export async function retrieveEvidence(ctx: AgentContext): Promise<Evidence[]> {
     });
   }
 
-  const byType = getFinancialRecordsByType(trigger.type === "new_subscription" ? "subscription" : trigger.type === "new_invoice" ? "invoice" : trigger.type === "new_expense" ? "expense" : "payment");
-  evidence.push({
-    key: `records_type_${trigger.type}`,
-    value: `${byType.length} records of type`,
-    sourceDocId: "db",
-  });
+  const typeMap: Record<string, string> = {
+    new_subscription: "subscription",
+    new_invoice: "invoice",
+    new_expense: "expense",
+    new_payment: "payment",
+  };
+  const recordType = typeMap[trigger.type];
+  const byType = recordType ? getFinancialRecordsByType(recordType) : [];
+  const typeLabel = recordType ?? trigger.type;
+  if (byType.length > 0) {
+    evidence.push({
+      key: `records_type_${typeLabel}`,
+      value: `${byType.length} records of type ${typeLabel}`,
+      sourceDocId: "db",
+    });
+  }
 
   ctx.state.evidence = evidence;
   for (const e of evidence) {
