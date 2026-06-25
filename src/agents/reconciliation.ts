@@ -39,7 +39,7 @@ registerAgent("reconciliation", {
     const payments = getFinancialRecordsByType("payment").filter((r) => r.amount > 0);
 
     const dates = [...invoices.map((i) => i.date), ...payments.map((p) => p.date)].filter(Boolean);
-    const referenceDate = dates.length > 0 ? dates[dates.length - 1]! : new Date().toISOString().slice(0, 10);
+    const referenceDate = dates.length > 0 ? dates[0]! : new Date().toISOString().slice(0, 10);
 
     const paymentsByVendor = new Map<string, FinancialRecord[]>();
     for (const p of payments) {

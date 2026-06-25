@@ -1,4 +1,4 @@
-import type { InvestigationState, AuditEvent, AgentType, FinancialEvent, Comparison } from "../model/types";
+import type { InvestigationState, AuditEvent, AgentType, FinancialEvent, Comparison, AppConfig } from "../model/types";
 import { classifyEvent } from "./nodes/classify";
 import { retrieveEvidence } from "./nodes/retrieve-evidence";
 import { runComparison } from "./nodes/run-comparison";
@@ -12,6 +12,7 @@ export interface AgentContext {
   agentType: AgentType;
   state: InvestigationState;
   emit: (event: AuditEvent) => void;
+  config?: { maxIterations?: number; confidenceFloor?: number };
 }
 
 export interface AgentDefinition {
@@ -42,11 +43,12 @@ export async function runInvestigation(
   };
 
   function recordEvent(event: AuditEvent): void {
-    state.events.push(event);
-    emit(event);
+    const stamped = { ...event, timestamp: new Date().toISOString() };
+    state.events.push(stamped);
+    if (event.type !== "done") emit(stamped);
   }
 
-  const ctx: AgentContext = { agentType, state, emit: recordEvent };
+  const ctx: AgentContext = { agentType, state, emit: recordEvent, config };
 
   recordEvent({ type: "agent_start", agent: agentType, description: `Starting ${agentType} investigation` });
 
@@ -72,6 +74,6 @@ export async function runInvestigation(
     recordEvent({ type: "step", agent: agentType, message: `Confidence ${(score * 100).toFixed(0)}% < ${(floor * 100).toFixed(0)}% floor, re-investigating (pass ${state.iterations})` });
   }
 
-  recordEvent({ type: "done", totalFindings: state.finding ? 1 : 0, durationMs: 0 });
+  state.events.push({ type: "done", totalFindings: state.finding ? 1 : 0, durationMs: 0, timestamp: new Date().toISOString() });
   return state;
 }

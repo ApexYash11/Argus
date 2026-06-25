@@ -50,13 +50,14 @@ export async function runSupervisor(
           eventsBuffer.push(event);
         }, config);
 
+        let hadFinding = false;
         for (const event of eventsBuffer) {
           yield event;
+          if (event.type === "finding") hadFinding = true;
         }
 
-        if (state.finding) {
+        if (hadFinding) {
           findingsCount++;
-          yield { type: "finding", finding: state.finding };
         } else {
           const floor = config?.confidenceFloor ?? 0.7;
           const pct = (state.confidence * 100).toFixed(0);

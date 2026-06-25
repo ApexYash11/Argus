@@ -47,7 +47,8 @@ registerAgent("saas-waste", {
 
     const usageByVendor = new Map<string, ToolUsage>();
     for (const u of usage) {
-      const existing = usageByVendor.get(u.vendorId ?? u.tool.toLowerCase()) ?? {
+      const key = (u.vendorId ?? u.tool).toLowerCase();
+      const existing = usageByVendor.get(key) ?? {
         tool: u.tool,
         vendorId: u.vendorId ?? u.tool.toLowerCase(),
         activeEmails: new Set<string>(),
@@ -55,11 +56,11 @@ registerAgent("saas-waste", {
       };
       existing.activeEmails.add(u.employeeEmail);
       if (u.lastLogin > existing.lastLogin) existing.lastLogin = u.lastLogin;
-      usageByVendor.set(u.vendorId ?? u.tool.toLowerCase(), existing);
+      usageByVendor.set(key, existing);
     }
 
     const dates = subs.map((s) => s.date).filter(Boolean);
-    const referenceDate = dates.length > 0 ? dates[dates.length - 1]! : new Date().toISOString().slice(0, 10);
+    const referenceDate = dates.length > 0 ? dates[0]! : new Date().toISOString().slice(0, 10);
 
     for (const sub of subs) {
       const seatCount = parseSeatCount(sub.description);

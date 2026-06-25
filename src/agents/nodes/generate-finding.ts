@@ -46,10 +46,7 @@ export async function generateFinding(ctx: AgentContext): Promise<Finding | null
     severity,
     status: "open",
     scratchpadRunId,
-    investigationEvents: JSON.stringify(ctx.state.events.map((e) => ({
-      ...e,
-      timestamp: new Date().toISOString(),
-    }))),
+    investigationEvents: JSON.stringify(ctx.state.events),
     dismissedCount: 0,
     createdAt: new Date().toISOString(),
   };

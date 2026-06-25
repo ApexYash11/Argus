@@ -89,15 +89,15 @@ export interface ContractTerms {
 }
 
 export type AuditEvent =
-  | { type: "agent_start"; agent: string; description: string }
-  | { type: "step"; agent: string; message: string }
-  | { type: "evidence_found"; key: string; value: string; sourceDocId: string }
-  | { type: "comparison"; label: string; expected: string; actual: string; delta?: string }
-  | { type: "confidence"; score: number; reason: string }
-  | { type: "finding"; finding: Finding }
-  | { type: "llm_token"; token: string }
-  | { type: "agent_skipped"; agent: string; reason: string }
-  | { type: "done"; totalFindings: number; durationMs: number };
+  | { type: "agent_start"; agent: string; description: string; timestamp?: string }
+  | { type: "step"; agent: string; message: string; timestamp?: string }
+  | { type: "evidence_found"; key: string; value: string; sourceDocId: string; timestamp?: string }
+  | { type: "comparison"; label: string; expected: string; actual: string; delta?: string; timestamp?: string }
+  | { type: "confidence"; score: number; reason: string; timestamp?: string }
+  | { type: "finding"; finding: Finding; timestamp?: string }
+  | { type: "llm_token"; token: string; timestamp?: string }
+  | { type: "agent_skipped"; agent: string; reason: string; timestamp?: string }
+  | { type: "done"; totalFindings: number; durationMs: number; timestamp?: string };
 
 export interface InvestigationState {
   trigger: FinancialEvent;

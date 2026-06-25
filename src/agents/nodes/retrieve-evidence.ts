@@ -41,11 +41,13 @@ export async function retrieveEvidence(ctx: AgentContext): Promise<Evidence[]> {
   const recordType = typeMap[trigger.type];
   const byType = recordType ? getFinancialRecordsByType(recordType) : [];
   const typeLabel = recordType ?? trigger.type;
-  evidence.push({
-    key: `records_type_${typeLabel}`,
-    value: `${byType.length} records of type ${typeLabel}`,
-    sourceDocId: "db",
-  });
+  if (byType.length > 0) {
+    evidence.push({
+      key: `records_type_${typeLabel}`,
+      value: `${byType.length} records of type ${typeLabel}`,
+      sourceDocId: "db",
+    });
+  }
 
   ctx.state.evidence = evidence;
   for (const e of evidence) {
