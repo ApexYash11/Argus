@@ -7,6 +7,11 @@ function zScore(value: number, mean: number, stddev: number): number {
   return (value - mean) / stddev;
 }
 
+function isMonthComplete(month: string, payments: { date: string }[]): boolean {
+  const days = new Set(payments.filter((p) => p.date.startsWith(month)).map((p) => p.date.slice(8, 10)));
+  return days.size >= 20;
+}
+
 registerAgent("anomaly-detection", {
   async classify(ctx) {
     ctx.emit({ type: "step", agent: "anomaly-detection", message: "Analyzing spend patterns for anomalies..." });
@@ -49,8 +54,11 @@ registerAgent("anomaly-detection", {
 
     const monthlyTotals = months.map(([m, vals]) => ({ month: m, total: vals.reduce((s, v) => s + v, 0), count: vals.length }));
 
-    const priorMonths = monthlyTotals.slice(0, -1);
-    const currentMonth = monthlyTotals[monthlyTotals.length - 1]!;
+    const completeMonths = monthlyTotals.filter((m) => isMonthComplete(m.month, payments));
+    if (completeMonths.length < 2) return [];
+
+    const currentMonth = completeMonths[completeMonths.length - 1]!;
+    const priorMonths = completeMonths.slice(0, -1);
 
     const mean = priorMonths.reduce((s, m) => s + m.total, 0) / priorMonths.length;
     const variance = priorMonths.reduce((s, m) => s + (m.total - mean) ** 2, 0) / priorMonths.length;
@@ -81,7 +89,7 @@ registerAgent("anomaly-detection", {
       const vendorMonths = [...monthMap.entries()].sort((a, b) => a[0].localeCompare(b[0]));
       if (vendorMonths.length < 2) continue;
 
-      const priorVendorMonths = vendorMonths.filter(([m]) => m !== currentMonthStr);
+      const priorVendorMonths = vendorMonths.filter(([m]) => m !== currentMonthStr && isMonthComplete(m, payments));
       const currentVendorAmount = monthMap.get(currentMonthStr);
       if (!currentVendorAmount || priorVendorMonths.length === 0) continue;
 
@@ -100,20 +108,21 @@ registerAgent("anomaly-detection", {
       }
     }
 
+    (ctx.state as any)._freshComparisons = comparisons.length;
     return comparisons;
   },
 
   async score(ctx) {
-    const cmpCount = ctx.state.comparisons.length;
+    const freshCount = (ctx.state as any)._freshComparisons ?? 0;
 
     let score = 0.5;
     const reasons: string[] = [];
 
-    if (cmpCount > 0) {
-      score += Math.min(cmpCount * 0.15, 0.35);
-      reasons.push(`${cmpCount} anomaly signal(s)`);
+    if (freshCount > 0) {
+      score += Math.min(freshCount * 0.15, 0.35);
+      reasons.push(`${freshCount} anomaly signal(s)`);
     }
-    if (cmpCount === 0) {
+    if (freshCount === 0) {
       score = 0.3;
       reasons.push("no anomalies detected");
     }

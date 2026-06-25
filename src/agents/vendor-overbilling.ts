@@ -1,6 +1,16 @@
 import { registerAgent } from "./supervisor";
-import type { Comparison } from "../model/types";
-import { getFinancialRecordsByType, getAllContractTerms, getContractTermsByVendor } from "../db/queries";
+import type { Comparison, FinancialRecord } from "../model/types";
+import { getFinancialRecordsByType, getAllContractTerms } from "../db/queries";
+
+function invoicePeriod(invDate: string, frequency: string): string {
+  if (frequency === "monthly") return invDate.slice(0, 7);
+  if (frequency === "quarterly") {
+    const m = parseInt(invDate.slice(5, 7), 10);
+    const q = m <= 3 ? "Q1" : m <= 6 ? "Q2" : m <= 9 ? "Q3" : "Q4";
+    return `${invDate.slice(0, 4)}-${q}`;
+  }
+  return invDate.slice(0, 4);
+}
 
 registerAgent("vendor-overbilling", {
   async classify(ctx) {
@@ -27,7 +37,7 @@ registerAgent("vendor-overbilling", {
     const contracts = getAllContractTerms();
     const contractsByVendor = new Map(contracts.map((c) => [c.vendorId.toLowerCase(), c]));
 
-    const invoicesByVendor = new Map<string, typeof invoices>();
+    const invoicesByVendor = new Map<string, FinancialRecord[]>();
     for (const inv of invoices) {
       const key = inv.vendorId.toLowerCase();
       const list = invoicesByVendor.get(key) ?? [];
@@ -38,28 +48,30 @@ registerAgent("vendor-overbilling", {
     for (const [vendorKey, invs] of invoicesByVendor) {
       const contract = contractsByVendor.get(vendorKey);
 
-      invs.sort((a, b) => a.date.localeCompare(b.date));
-
-      const totalBilled = invs.reduce((s, i) => s + i.amount, 0);
-      const avgInvoice = totalBilled / invs.length;
-
       if (contract) {
-        const expectedPerPeriod = contract.basePrice;
         const freq = contract.billingFrequency;
         const periodLabel = freq === "monthly" ? "mo" : freq === "quarterly" ? "qtr" : "yr";
 
-        if (avgInvoice > expectedPerPeriod * 1.1) {
-          const deviation = ((avgInvoice - expectedPerPeriod) / expectedPerPeriod * 100).toFixed(0);
-          comparisons.push({
-            label: invs[0]!.vendorId,
-            expected: `~${expectedPerPeriod}/${periodLabel} per contract`,
-            actual: `${avgInvoice.toFixed(0)} avg invoice`,
-            delta: `Overbilled by ${deviation}% vs contracted rate`,
-          });
+        const periodBuckets = new Map<string, number>();
+        for (const inv of invs) {
+          const period = invoicePeriod(inv.date, freq);
+          periodBuckets.set(period, (periodBuckets.get(period) ?? 0) + inv.amount);
         }
 
-        if (contract.escalationClause) {
-          const maxAllowed = expectedPerPeriod * (1 + contract.escalationClause);
+        for (const [period, periodTotal] of periodBuckets) {
+          if (periodTotal > contract.basePrice * 1.1) {
+            const deviation = ((periodTotal - contract.basePrice) / contract.basePrice * 100).toFixed(0);
+            comparisons.push({
+              label: `${invs[0]!.vendorId} (${period})`,
+              expected: `~${contract.basePrice}/${periodLabel} per contract`,
+              actual: `${periodTotal} billed`,
+              delta: `Overbilled by ${deviation}% vs contracted rate`,
+            });
+          }
+        }
+
+        if (contract.escalationClause !== undefined) {
+          const maxAllowed = contract.basePrice * (1 + contract.escalationClause);
           const overLimit = invs.filter((i) => i.amount > maxAllowed);
           for (const inv of overLimit) {
             comparisons.push({
@@ -71,22 +83,23 @@ registerAgent("vendor-overbilling", {
           }
         }
       } else {
-        if (invs.length >= 2) {
-          comparisons.push({
-            label: invs[0]!.vendorId,
-            expected: "contracted rate on file",
-            actual: `${invs.length} invoice(s), avg ${avgInvoice.toFixed(0)}`,
-            delta: "No contract terms available for comparison",
-          });
-        }
+        const totalBilled = invs.reduce((s, i) => s + i.amount, 0);
+        const avgInvoice = totalBilled / invs.length;
+        comparisons.push({
+          label: invs[0]!.vendorId,
+          expected: "contracted rate on file",
+          actual: `${invs.length} invoice(s), avg ${avgInvoice.toFixed(0)}`,
+          delta: "No contract terms available for comparison",
+        });
       }
     }
 
+    (ctx.state as any)._freshComparisons = comparisons.length;
     return comparisons;
   },
 
   async score(ctx) {
-    const cmpCount = ctx.state.comparisons.length;
+    const freshCount = (ctx.state as any)._freshComparisons ?? 0;
     const overbilledCount = ctx.state.comparisons.filter((c) => c.delta?.includes("Overbilled")).length;
     const escalationCount = ctx.state.comparisons.filter((c) => c.delta?.includes("escalation")).length;
 
@@ -95,9 +108,9 @@ registerAgent("vendor-overbilling", {
 
     if (overbilledCount > 0) { score += 0.25; reasons.push(`${overbilledCount} overbilling signal(s)`); }
     if (escalationCount > 0) { score += 0.2; reasons.push(`${escalationCount} escalation breach(es)`); }
-    const noContractCount = cmpCount - overbilledCount - escalationCount;
+    const noContractCount = freshCount - overbilledCount - escalationCount;
     if (noContractCount > 0) { score += 0.05; reasons.push(`${noContractCount} vendor(s) without contract`); }
-    if (cmpCount === 0) { score = 0; reasons.push("no vendors flagged"); }
+    if (freshCount === 0) { score = 0; reasons.push("no vendors flagged"); }
 
     return {
       score: Math.round(Math.min(score, 0.95) * 100) / 100,
