@@ -5,7 +5,7 @@ import { render } from "ink";
 import App from "./App";
 import { initWorkspace } from "./commands/init";
 import { ingestFile } from "./commands/ingest";
-import { investigate } from "./commands/investigate";
+import { investigate, stopWatcher } from "./commands/investigate";
 import { listFindings } from "./commands/findings";
 import { explainFinding } from "./commands/explain";
 import { submitFeedback } from "./commands/feedback";
@@ -70,6 +70,15 @@ const cli = meow(
     },
   }
 );
+
+process.on("SIGINT", () => {
+  stopWatcher();
+  process.exit(0);
+});
+process.on("SIGTERM", () => {
+  stopWatcher();
+  process.exit(0);
+});
 
 const [command, ...inputArgs] = cli.input;
 const flags = cli.flags;

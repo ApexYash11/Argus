@@ -211,6 +211,18 @@ export function insertFeedback(feedback: Feedback): void {
   );
 }
 
+export function getCalibrationsForAgent(agentType: string): Calibration[] {
+  const db = getDb();
+  return (db.query("SELECT * FROM calibration WHERE agent_type = $agentType").all({ $agentType: agentType }) as Record<string, unknown>[]).map((row) => ({
+    workspaceId: row.workspace_id as string,
+    agentType: row.agent_type as Calibration["agentType"],
+    vendorId: row.vendor_id as string | undefined,
+    thresholdOverride: row.threshold_override as number | undefined,
+    dismissCount: row.dismiss_count as number,
+    lastUpdated: row.last_updated as string,
+  }));
+}
+
 export function getCalibration(agentType: string, vendorId?: string): Calibration | null {
   const db = getDb();
   const row = db.query(
@@ -332,6 +344,14 @@ export function getRecordCount(): number {
   const db = getDb();
   const row = db.query("SELECT COUNT(*) as count FROM financial_records").get() as { count: number };
   return row.count;
+}
+
+export function updateVendorTrustScore(vendorId: string, delta: number): void {
+  const db = getDb();
+  db.run(
+    "UPDATE vendors SET trust_score = MAX(0.0, MIN(1.0, COALESCE(trust_score, 1.0) + $delta)) WHERE id = $id",
+    { $id: vendorId, $delta: delta }
+  );
 }
 
 export function getRecordCountByType(type: string): number {

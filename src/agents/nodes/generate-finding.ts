@@ -1,7 +1,7 @@
 import type { Finding } from "../../model/types";
 import type { AgentContext } from "../state-machine";
 import { generateFingerprint, generateFindingId, assignSeverity } from "../../engine/finding-builder";
-import { insertFinding, findExistingFingerprint } from "../../db/queries";
+import { insertFinding, findExistingFingerprint, updateVendorTrustScore } from "../../db/queries";
 import { writeScratchpadEntry } from "../../engine/scratchpad";
 
 export async function generateFinding(ctx: AgentContext): Promise<Finding | null> {
@@ -52,6 +52,9 @@ export async function generateFinding(ctx: AgentContext): Promise<Finding | null
   };
 
   insertFinding(finding);
+
+  const trustDelta = severity === "critical" ? -0.15 : severity === "high" ? -0.10 : -0.05;
+  if (vendorId !== "unknown") updateVendorTrustScore(vendorId, trustDelta);
 
   ctx.state.finding = finding;
   ctx.emit({ type: "finding", finding });

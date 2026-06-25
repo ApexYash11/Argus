@@ -58,14 +58,13 @@ export async function runSupervisor(
 
         if (hadFinding) {
           findingsCount++;
+        } else if (state.finding === undefined && state.confidence >= (config?.confidenceFloor ?? 0.7)) {
+          yield { type: "step", agent: agentType, message: `Finding suppressed — duplicate fingerprint already exists for this period` };
+        } else if (state.iterations >= (config?.maxIterations ?? 5)) {
+          yield { type: "step", agent: agentType, message: `No finding — max iterations (${state.iterations}) reached at confidence ${(state.confidence * 100).toFixed(0)}%` };
         } else {
-          const floor = config?.confidenceFloor ?? 0.7;
           const pct = (state.confidence * 100).toFixed(0);
-          if (state.confidence >= floor) {
-            yield { type: "step", agent: agentType, message: `No new finding — duplicate (confidence ${pct}% passed floor but already exists)` };
-          } else {
-            yield { type: "step", agent: agentType, message: `No finding — confidence ${pct}% below ${(floor * 100).toFixed(0)}% floor` };
-          }
+          yield { type: "step", agent: agentType, message: `No finding — confidence ${pct}% below threshold` };
         }
       } catch (err: any) {
         yield { type: "step", agent: agentType, message: `Error: ${err.message}` };

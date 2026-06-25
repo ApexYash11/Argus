@@ -4,6 +4,7 @@ import { retrieveEvidence } from "./nodes/retrieve-evidence";
 import { runComparison } from "./nodes/run-comparison";
 import { scoreConfidence } from "./nodes/score-confidence";
 import { generateFinding } from "./nodes/generate-finding";
+import { getCalibration } from "../db/queries";
 
 export const MAX_ITERATIONS = 5;
 export const CONFIDENCE_FLOOR = 0.7;
@@ -30,7 +31,9 @@ export async function runInvestigation(
   config?: { maxIterations?: number; confidenceFloor?: number }
 ): Promise<InvestigationState> {
   const maxIters = config?.maxIterations ?? MAX_ITERATIONS;
-  const floor = config?.confidenceFloor ?? CONFIDENCE_FLOOR;
+  const vendorId = trigger.vendorId;
+  const cal = vendorId ? getCalibration(agentType, vendorId) : null;
+  const floor = cal?.thresholdOverride ?? config?.confidenceFloor ?? CONFIDENCE_FLOOR;
 
   const state: InvestigationState = {
     trigger,
@@ -50,22 +53,51 @@ export async function runInvestigation(
 
   const ctx: AgentContext = { agentType, state, emit: recordEvent, config };
 
+  if (cal && cal.thresholdOverride) {
+    recordEvent({ type: "step", agent: agentType, message: `Calibration loaded — threshold ${(cal.thresholdOverride * 100).toFixed(0)}% (${cal.dismissCount} dismissals)` });
+  }
+
   recordEvent({ type: "agent_start", agent: agentType, description: `Starting ${agentType} investigation` });
 
-  await agentDef.classify(ctx);
+  try {
+    await agentDef.classify(ctx);
+  } catch (err: any) {
+    recordEvent({ type: "step", agent: agentType, message: `Classify error: ${err.message}` });
+    state.events.push({ type: "done", totalFindings: 0, durationMs: 0, timestamp: new Date().toISOString() });
+    return state;
+  }
   state.iterations++;
 
   while (state.iterations <= maxIters) {
-    await agentDef.retrieve(ctx);
-    const comparisons = await agentDef.compare(ctx);
-    state.comparisons.push(...comparisons);
-    const { score, reason } = await agentDef.score(ctx);
+    try { await agentDef.retrieve(ctx); } catch (err: any) {
+      recordEvent({ type: "step", agent: agentType, message: `Retrieve error: ${err.message}` });
+      break;
+    }
+    try {
+      const comparisons = await agentDef.compare(ctx);
+      state.comparisons.push(...comparisons);
+    } catch (err: any) {
+      recordEvent({ type: "step", agent: agentType, message: `Compare error: ${err.message}` });
+      break;
+    }
+    let score = 0;
+    let reason = "";
+    try {
+      const result = await agentDef.score(ctx);
+      score = result.score;
+      reason = result.reason;
+    } catch (err: any) {
+      recordEvent({ type: "step", agent: agentType, message: `Score error: ${err.message}` });
+      break;
+    }
     state.confidence = score;
 
     recordEvent({ type: "confidence", score, reason });
 
     if (score >= floor) {
-      await generateFinding(ctx);
+      try { await generateFinding(ctx); } catch (err: any) {
+        recordEvent({ type: "step", agent: agentType, message: `Generate finding error: ${err.message}` });
+      }
       break;
     }
 

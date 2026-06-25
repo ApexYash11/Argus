@@ -52,12 +52,20 @@ export function parseCsvFile<T = any>(filePath: string, type?: string): ParseRes
   try {
     content = fs.readFileSync(filePath, "utf-8");
   } catch (err: any) {
-    result.errors.push({ line: 0, message: `Cannot read file: ${err.message}` });
+    if (err.code === "ENOENT") {
+      result.errors.push({ line: 0, message: `File not found: ${filePath}`, hint: "Check the file path and try again" });
+    } else if (err.code === "EISDIR") {
+      result.errors.push({ line: 0, message: `Path is a directory, not a file: ${filePath}` });
+    } else if (err.message?.includes("ENCODING") || err.message?.includes("decode")) {
+      result.errors.push({ line: 0, message: `File encoding error: ${err.message}`, hint: "Ensure the file is UTF-8 encoded" });
+    } else {
+      result.errors.push({ line: 0, message: `Cannot read file: ${err.message}` });
+    }
     return result;
   }
 
   if (!content.trim()) {
-    result.errors.push({ line: 0, message: "File is empty" });
+    result.errors.push({ line: 0, message: "CSV file is empty", hint: "Add data rows with headers or use a different file" });
     return result;
   }
 
