@@ -11,7 +11,8 @@ export async function submitFeedback(
     return { error: `Finding ${findingId} not found` };
   }
 
-  updateFindingStatus(findingId, action === "escalate" ? "open" : action, reason);
+  const status = action === "escalate" ? "open" : action === "dismiss" ? "dismissed" : action;
+  updateFindingStatus(findingId, status, reason);
 
   insertFeedback({
     id: `FB-${crypto.randomBytes(4).toString("hex").toUpperCase()}`,
@@ -46,5 +47,6 @@ export async function submitFeedback(
     });
   }
 
-  return { message: `Finding ${findingId} ${action}d` };
+  const verb = action === "dismiss" ? "dismissed" : `${action}d`;
+  return { message: `Finding ${findingId} ${verb}` };
 }

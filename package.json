@@ -1,6 +1,6 @@
 {
   "name": "ai-spend-auditor",
-  "version": "0.1.0",
+  "version": "1.0.0-alpha",
   "description": "Autonomous financial investigation system for startups",
   "type": "module",
   "module": "src/cli/index.tsx",
@@ -8,9 +8,14 @@
     "audit": "src/cli/index.tsx"
   },
   "scripts": {
-    "dev": "bun run src/cli/index.tsx",
+    "start": "bun run src/cli/index.tsx",
+    "dev": "bun run --watch src/cli/index.tsx",
     "build": "bun build src/cli/index.tsx --outdir dist",
-    "compile": "bun build --compile src/cli/index.tsx --outfile dist/argus"
+    "compile": "bun build --compile --target=bun-linux-x64 src/cli/index.tsx --outfile dist/argus-linux",
+    "compile:win": "bun build --compile --target=bun-windows-x64 src/cli/index.tsx --outfile dist/argus.exe",
+    "compile:mac": "bun build --compile --target=bun-darwin-arm64 src/cli/index.tsx --outfile dist/argus-mac",
+    "postinstall": "bun run build",
+    "demo": "bun run src/cli/index.tsx init --company Demo && bun run src/cli/index.tsx ingest test-data/subscriptions.csv && bun run src/cli/index.tsx ingest test-data/usage.csv && bun run src/cli/index.tsx ingest test-data/transactions.csv && bun run src/cli/index.tsx ingest test-data/expense-reports.csv && bun run src/cli/index.tsx ingest test-data/committed-expenses.csv && bun run src/cli/index.tsx investigate && bun run src/cli/index.tsx findings && bun run src/cli/index.tsx status && bun run src/cli/index.tsx report"
   },
   "private": true,
   "devDependencies": {
