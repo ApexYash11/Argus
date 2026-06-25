@@ -1,4 +1,5 @@
 import fs from "fs";
+import path from "path";
 import { parse } from "csv-parse/sync";
 import {
   SubscriptionRowSchema,
@@ -80,7 +81,7 @@ export function parseCsvFile<T = any>(filePath: string, type?: string): ParseRes
   }
 
   const headers = Object.keys(rawRecords[0] ?? {});
-  const resolvedType = type ?? inferCsvType(filePath, headers);
+  const resolvedType = type ?? inferCsvType(path.basename(filePath), headers);
   if (!resolvedType || !(resolvedType in SCHEMA_MAP)) {
     const supported = Object.keys(SCHEMA_MAP).join(", ");
     result.errors.push({ line: 0, message: `Could not determine CSV type from filename or headers. Supported types: ${supported}`, hint: `Specify --type with one of: ${supported}` });

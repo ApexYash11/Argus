@@ -20,11 +20,16 @@ const COLORS: Record<string, string> = {
   dim: "#888888",
 };
 
+function distinctRowCount(errors: ParseError[]): number {
+  return new Set(errors.filter((e) => e.line > 0).map((e) => e.line)).size;
+}
+
 export default function ParseErrorPreview({ errors, filename }: Props) {
   if (errors.length === 0) return null;
 
   const fileErrors = errors.filter((e) => e.line > 0);
   const structuralErrors = errors.filter((e) => e.line === 0);
+  const failedRowCount = distinctRowCount(errors);
 
   return (
     <Box flexDirection="column" marginY={1}>
@@ -33,7 +38,7 @@ export default function ParseErrorPreview({ errors, filename }: Props) {
         <Text> </Text>
         <Text bold>Parse Errors — {filename}</Text>
         <Text> (</Text>
-        <Text color={COLORS.yellow}>{errors.length} issues</Text>
+        <Text color={COLORS.yellow}>{errors.length} issue{errors.length > 1 ? "s" : ""}</Text>
         <Text>)</Text>
       </Box>
 
@@ -48,12 +53,14 @@ export default function ParseErrorPreview({ errors, filename }: Props) {
         </Box>
       )}
 
-      <Box marginTop={structuralErrors.length > 0 ? 1 : 0}>
-        <Text>
-          <Text color={COLORS.yellow}>{fileErrors.length}</Text>
-          <Text> row{fileErrors.length > 1 ? "s" : ""} failed validation</Text>
-        </Text>
-      </Box>
+      {fileErrors.length > 0 && (
+        <Box marginTop={structuralErrors.length > 0 ? 1 : 0}>
+          <Text>
+            <Text color={COLORS.yellow}>{failedRowCount}</Text>
+            <Text> row{failedRowCount > 1 ? "s" : ""} failed validation</Text>
+          </Text>
+        </Box>
+      )}
 
       {fileErrors.slice(0, 3).map((err, i) => (
         <Box key={`file-${i}`} flexDirection="column" marginLeft={2} marginTop={1}>
@@ -80,7 +87,7 @@ export default function ParseErrorPreview({ errors, filename }: Props) {
 
       {fileErrors.length > 3 && (
         <Box marginLeft={2} marginTop={1}>
-          <Text color={COLORS.dim}>... and {fileErrors.length - 3} more errors</Text>
+          <Text color={COLORS.dim}>... and {fileErrors.length - 3} more error{fileErrors.length - 3 > 1 ? "s" : ""}</Text>
         </Box>
       )}
 

@@ -1,25 +1,11 @@
 import fs from "fs";
 import { PDFParse } from "pdf-parse";
 
-let tesseractWorker: any = null;
-
-async function getTesseractWorker() {
-  if (!tesseractWorker) {
-    const { createWorker } = await import("tesseract.js");
-    tesseractWorker = await createWorker("eng");
-  }
-  return tesseractWorker;
-}
-
 export interface PdfExtractResult {
   text: string;
   pages: number;
   method: "text" | "ocr";
   error?: string;
-}
-
-function bufferToArrayBuffer(buf: Buffer): ArrayBuffer {
-  return buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength);
 }
 
 export async function extractPdf(filePath: string): Promise<PdfExtractResult> {
@@ -29,25 +15,22 @@ export async function extractPdf(filePath: string): Promise<PdfExtractResult> {
 
   const buffer = fs.readFileSync(filePath);
 
+  let parser: PDFParse | undefined;
   try {
-    const p = new PDFParse(bufferToArrayBuffer(buffer));
-    await p.load();
-    const result = await p.getText();
+    parser = new PDFParse({ data: buffer });
+    const result = await parser.getText();
     const text = (result.text ?? "").trim();
     if (text.length > 20) {
-      return { text, pages: result.total ?? 1, method: "text" };
+      const info = await parser.getInfo();
+      return { text, pages: info.numPages ?? 1, method: "text" };
     }
   } catch {
-    // text extraction failed, fall through to OCR
+    // text extraction failed
+  } finally {
+    await parser?.destroy();
   }
 
-  try {
-    const worker = await getTesseractWorker();
-    const { data } = await worker.recognize(buffer);
-    return { text: data.text ?? "", pages: 1, method: "ocr" };
-  } catch (err: any) {
-    return { text: "", pages: 0, method: "ocr", error: `OCR failed: ${err.message}` };
-  }
+  return { text: "", pages: 0, method: "ocr", error: "PDF text extraction returned no content" };
 }
 
 export async function extractInvoiceFields(

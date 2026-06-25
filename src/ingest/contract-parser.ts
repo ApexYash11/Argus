@@ -58,7 +58,7 @@ function rowToContractTerms(row: Record<string, unknown>): ContractTerms {
     vendorId: row.vendor_id as string,
     basePrice: row.base_price as number,
     billingFrequency: row.billing_frequency as ContractTerms["billingFrequency"],
-    escalationClause: row.escalation_clause as number | undefined,
+    escalationClause: (row.escalation_clause as number | null) ?? undefined,
     extractedFrom: row.extracted_from as string,
     extractedAt: row.extracted_at as string,
   };

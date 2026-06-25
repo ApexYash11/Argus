@@ -37,6 +37,7 @@ export async function ingestFile(
       if (result.errors.length > 0 && result.records.length === 0) {
         yield { type: "step", agent: "ingest", message: "All rows failed validation. Aborting." };
         writeScratchpadEntry({ type: "ingest_abort", message: "All rows failed validation" });
+        yield { type: "done", totalFindings: 0, durationMs: 0 };
         return;
       }
 
@@ -72,6 +73,7 @@ export async function ingestFile(
       const pdfResult = await extractPdf(absPath);
       if (pdfResult.error) {
         yield { type: "step", agent: "ingest", message: `PDF error: ${pdfResult.error}` };
+        yield { type: "done", totalFindings: 0, durationMs: 0 };
         return;
       }
 
@@ -82,13 +84,15 @@ export async function ingestFile(
       };
 
       const fields = await extractInvoiceFields(absPath);
-      if (fields.vendorName || fields.amount) {
+      const hasVendor = !!fields.vendorName;
+      const hasAmount = !!fields.amount && fields.amount > 0;
+      if (hasVendor && hasAmount) {
         const mockRaw = {
           _raw: JSON.stringify(fields),
           _line: 0,
           _type: "invoices",
-          vendor_name: fields.vendorName ?? "Unknown Vendor",
-          amount: fields.amount ?? 0,
+          vendor_name: fields.vendorName!,
+          amount: fields.amount!,
           date: fields.date ?? new Date().toISOString().slice(0, 10),
           description: `Invoice ${fields.invoiceNumber ?? "unknown"}`,
           cleared: true,
@@ -115,6 +119,7 @@ export async function ingestFile(
 
     } else {
       yield { type: "step", agent: "ingest", message: `Unsupported file type: ${ext}. Use .csv or .pdf` };
+      yield { type: "done", totalFindings: 0, durationMs: 0 };
       return;
     }
 

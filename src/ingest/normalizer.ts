@@ -41,7 +41,9 @@ function parseDate(value: string): string {
 function inferPeriod(sub: Record<string, unknown>): { start?: string; end?: string } {
   const renewalDate = sub.renewal_date as string | undefined;
   if (renewalDate) {
-    const d = new Date(renewalDate);
+    const parsed = parseDate(renewalDate);
+    const d = new Date(parsed);
+    if (isNaN(d.getTime())) return {};
     const start = new Date(d.getFullYear(), d.getMonth() - 1, d.getDate());
     return { start: start.toISOString().slice(0, 10), end: d.toISOString().slice(0, 10) };
   }
@@ -99,6 +101,15 @@ export function normalizeRecord(raw: RawRecord, currency: string = "INR"): Norma
       date = parseDate(String(raw.due_date ?? ""));
       status = "pending";
       description = String(raw.description ?? `${vendorName} commitment`);
+      break;
+    }
+
+    case "invoices": {
+      recordType = "invoice";
+      amount = Math.abs(Number(raw.amount ?? 0));
+      date = parseDate(String(raw.date ?? ""));
+      status = raw.cleared === true || raw.cleared === "true" || raw.cleared === "yes" ? "cleared" : "pending";
+      description = String(raw.description ?? `${vendorName} invoice`);
       break;
     }
 

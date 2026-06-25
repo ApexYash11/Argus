@@ -1,3 +1,4 @@
+import crypto from "crypto";
 import { getAllVendors, upsertVendor } from "../db/queries";
 import type { Vendor } from "../model/types";
 
@@ -30,17 +31,29 @@ const SEED_VENDORS: Array<{ name: string; aliases: string[] }> = [
   { name: "Zoom Video Communications", aliases: ["Zoom", "Zoom Communications"] },
 ];
 
-let seeded = false;
+const seeded = new Set<string>();
+
+function seedVendorId(name: string): string {
+  const hash = crypto.createHash("sha256").update(name).digest("hex").slice(0, 6).toUpperCase();
+  return `VND-${hash}`;
+}
 
 function seedVendors(): void {
-  if (seeded) return;
-  seeded = true;
   const existing = getAllVendors();
-  if (existing.length > 0) return;
+  const existingNames = new Set(existing.map((v) => v.canonicalName.toLowerCase()));
+  const existingAliases = new Set(existing.flatMap((v) => v.aliases.map((a) => a.toLowerCase())));
 
   for (const v of SEED_VENDORS) {
+    const id = seedVendorId(v.name);
+    if (seeded.has(id)) continue;
+    seeded.add(id);
+
+    if (existingNames.has(v.name.toLowerCase())) continue;
+    const hasAnyAlias = v.aliases.some((a) => existingAliases.has(a.toLowerCase()));
+    if (hasAnyAlias) continue;
+
     upsertVendor({
-      id: `VND-${v.name.slice(0, 3).toUpperCase()}${Math.random().toString(36).slice(2, 6).toUpperCase()}`,
+      id,
       canonicalName: v.name,
       aliases: [v.name, ...v.aliases],
       trustScore: 1.0,
@@ -122,7 +135,7 @@ export function resolveVendor(rawName: string): { vendorId: string; canonicalNam
     return { vendorId: bestVendor.id, canonicalName: bestVendor.canonicalName, confidence: Math.round(bestScore * 100) / 100, method: "fuzzy" };
   }
 
-  const newId = `VND-${Math.random().toString(36).slice(2, 8).toUpperCase()}`;
+  const newId = seedVendorId(rawName);
   const newVendor: Vendor = {
     id: newId,
     canonicalName: rawName,
