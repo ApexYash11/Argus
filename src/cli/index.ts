@@ -12,6 +12,7 @@ import { submitFeedback } from "./commands/feedback";
 import { getStatus } from "./commands/status";
 import { generateReport } from "./commands/report";
 import { initDb } from "../db/index";
+import "../agents/index";
 import fs from "fs";
 import path from "path";
 
@@ -96,11 +97,23 @@ async function main() {
 
     case "investigate": {
       ensureDb();
+      let findingsCount = 0;
       const stream = await investigate(flags.type as any, flags.watch);
       for await (const event of stream) {
         if (event.type === "step") console.log(`  ◆ ${event.message}`);
+        if (event.type === "evidence_found") console.log(`    → ${event.key}: ${event.value}`);
+        if (event.type === "comparison") console.log(`    ${event.label}: expected ${event.expected}, got ${event.actual}${event.delta ? ` (${event.delta})` : ""}`);
+        if (event.type === "confidence") console.log(`    Confidence: ${(event.score * 100).toFixed(0)}% — ${event.reason}`);
+        if (event.type === "finding") {
+          findingsCount++;
+          const f = event.finding;
+          const tag = f.severity === "critical" ? "⚠" : f.severity === "high" ? "!" : "·";
+          console.log(`  ${tag} ${f.id} | ${f.title} | [${f.severity}] ${(f.confidence * 100).toFixed(0)}%`);
+        }
+        if (event.type === "agent_skipped") console.log(`  ~ ${event.agent}: ${event.reason}`);
         if (event.type === "done") {
-          console.log(`\n  Done — ${event.totalFindings} findings in ${event.durationMs}ms`);
+          console.log(`\n  Done — ${findingsCount} finding(s) in ${event.durationMs}ms`);
+          console.log('  Run `audit findings` to review.');
         }
       }
       break;
