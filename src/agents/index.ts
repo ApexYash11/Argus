@@ -19,9 +19,10 @@ function registerBaseAgent(agentType: string, analyze: (records: FinancialRecord
         value: String(records.length),
         sourceDocId: "db",
       }];
+      (ctx.state as any)._cachedRecords = records;
     },
     async compare(ctx) {
-      const records = getAllFinancialRecords();
+      const records = (ctx.state as any)._cachedRecords ?? getAllFinancialRecords();
       return analyze(records);
     },
     async score(ctx) {
@@ -71,7 +72,7 @@ registerBaseAgent("anomaly-detection", (records) => {
   if (priorSum === 0) return [];
   const avg = priorSum / priorMonths.length;
   const last = months[months.length - 1]![1];
-  const pct = ((last - avg) / avg * 100).toFixed(0);
+  const pct = avg !== 0 ? ((last - avg) / avg * 100).toFixed(0) : "n/a";
   return [{
     label: "Monthly spend trend",
     expected: `${avg.toFixed(0)} avg (${priorMonths.length} months)`,

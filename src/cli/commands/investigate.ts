@@ -26,14 +26,19 @@ export async function investigate(
       for await (const event of stream) {
         yield event;
       }
-      watcherTimer = setInterval(async () => {
+      const runWatchCycle = async () => {
         try {
           const stream = await runSupervisor(trigger, type);
-          for await (const _ of stream) { /* re-run in background */ }
+          for await (const event of stream) {
+            if (event.type === "step" || event.type === "finding") {
+              console.log(`[watch] ${event.type}: ${(event as any).message ?? (event as any).finding?.title ?? ""}`);
+            }
+          }
         } catch (err) {
           console.error("Watch mode error:", err);
         }
-      }, 30_000);
+      };
+      watcherTimer = setInterval(runWatchCycle, 30_000);
       yield { type: "step", agent: "investigate", message: "Watch mode active. Press Ctrl+C to stop." };
       return;
     }

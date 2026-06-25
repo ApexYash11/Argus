@@ -44,9 +44,15 @@ export async function runSupervisor(
       };
 
       try {
+        const eventsBuffer: AuditEvent[] = [];
         const state = await runInvestigation(trigger, agentType, def, (event) => {
           writeScratchpadEntry({ type: "agent_event", agent: agentType, message: JSON.stringify(event) });
+          eventsBuffer.push(event);
         }, config);
+
+        for (const event of eventsBuffer) {
+          yield event;
+        }
 
         if (state.finding) {
           findingsCount++;

@@ -12,7 +12,6 @@ export interface AgentContext {
   agentType: AgentType;
   state: InvestigationState;
   emit: (event: AuditEvent) => void;
-  agents: Record<AgentType, AgentDefinition>;
 }
 
 export interface AgentDefinition {
@@ -42,12 +41,12 @@ export async function runInvestigation(
     events: [],
   };
 
-  const ctx: AgentContext = { agentType, state, emit, agents: {} as any };
-
   function recordEvent(event: AuditEvent): void {
     state.events.push(event);
     emit(event);
   }
+
+  const ctx: AgentContext = { agentType, state, emit: recordEvent };
 
   recordEvent({ type: "agent_start", agent: agentType, description: `Starting ${agentType} investigation` });
 
@@ -73,7 +72,6 @@ export async function runInvestigation(
     recordEvent({ type: "step", agent: agentType, message: `Confidence ${(score * 100).toFixed(0)}% < ${(floor * 100).toFixed(0)}% floor, re-investigating (pass ${state.iterations})` });
   }
 
-  emit({ type: "done", totalFindings: state.finding ? 1 : 0, durationMs: 0 });
   recordEvent({ type: "done", totalFindings: state.finding ? 1 : 0, durationMs: 0 });
   return state;
 }
