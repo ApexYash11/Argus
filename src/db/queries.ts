@@ -296,6 +296,38 @@ export function getUsageByTool(tool: string): UsageRecord[] {
   }));
 }
 
+export function getAllContractTerms(): ContractTerms[] {
+  const db = getDb();
+  return (db.query("SELECT * FROM contract_terms ORDER BY vendor_id").all() as Record<string, unknown>[]).map((row) => ({
+    vendorId: row.vendor_id as string,
+    basePrice: row.base_price as number,
+    billingFrequency: row.billing_frequency as ContractTerms["billingFrequency"],
+    escalationClause: row.escalation_clause != null ? (row.escalation_clause as number) : undefined,
+    volumeDiscounts: (row.volume_discounts as string) ?? undefined,
+    paymentTerms: (row.payment_terms as string) ?? undefined,
+    scopeOfServices: (row.scope_of_services as string) ?? undefined,
+    extractedFrom: row.extracted_from as string,
+    extractedAt: row.extracted_at as string,
+  }));
+}
+
+export function getContractTermsByVendor(vendorId: string): ContractTerms | null {
+  const db = getDb();
+  const row = db.query("SELECT * FROM contract_terms WHERE vendor_id = $vendorId").get({ $vendorId: vendorId }) as Record<string, unknown> | null;
+  if (!row) return null;
+  return {
+    vendorId: row.vendor_id as string,
+    basePrice: row.base_price as number,
+    billingFrequency: row.billing_frequency as ContractTerms["billingFrequency"],
+    escalationClause: row.escalation_clause != null ? (row.escalation_clause as number) : undefined,
+    volumeDiscounts: (row.volume_discounts as string) ?? undefined,
+    paymentTerms: (row.payment_terms as string) ?? undefined,
+    scopeOfServices: (row.scope_of_services as string) ?? undefined,
+    extractedFrom: row.extracted_from as string,
+    extractedAt: row.extracted_at as string,
+  };
+}
+
 export function getRecordCount(): number {
   const db = getDb();
   const row = db.query("SELECT COUNT(*) as count FROM financial_records").get() as { count: number };
