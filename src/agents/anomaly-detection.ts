@@ -7,9 +7,11 @@ function zScore(value: number, mean: number, stddev: number): number {
   return (value - mean) / stddev;
 }
 
-function isMonthComplete(month: string, payments: { date: string }[]): boolean {
-  const days = new Set(payments.filter((p) => p.date.startsWith(month)).map((p) => p.date.slice(8, 10)));
-  return days.size >= 20;
+function isMonthComplete(month: string): boolean {
+  const y = Number(month.slice(0, 4));
+  const m = Number(month.slice(5, 7));
+  const endOfMonth = new Date(y, m, 0, 23, 59, 59);
+  return new Date() > endOfMonth;
 }
 
 registerAgent("anomaly-detection", {
@@ -54,7 +56,7 @@ registerAgent("anomaly-detection", {
 
     const monthlyTotals = months.map(([m, vals]) => ({ month: m, total: vals.reduce((s, v) => s + v, 0), count: vals.length }));
 
-    const completeMonths = monthlyTotals.filter((m) => isMonthComplete(m.month, payments));
+    const completeMonths = monthlyTotals.filter((m) => isMonthComplete(m.month));
     if (completeMonths.length < 2) return [];
 
     const currentMonth = completeMonths[completeMonths.length - 1]!;
@@ -89,7 +91,7 @@ registerAgent("anomaly-detection", {
       const vendorMonths = [...monthMap.entries()].sort((a, b) => a[0].localeCompare(b[0]));
       if (vendorMonths.length < 2) continue;
 
-      const priorVendorMonths = vendorMonths.filter(([m]) => m !== currentMonthStr && isMonthComplete(m, payments));
+      const priorVendorMonths = vendorMonths.filter(([m]) => m !== currentMonthStr && isMonthComplete(m));
       const currentVendorAmount = monthMap.get(currentMonthStr);
       if (!currentVendorAmount || priorVendorMonths.length === 0) continue;
 

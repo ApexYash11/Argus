@@ -2,14 +2,14 @@ import { registerAgent } from "./supervisor";
 import type { Comparison, FinancialRecord } from "../model/types";
 import { getFinancialRecordsByType, getAllContractTerms } from "../db/queries";
 
-function invoicePeriod(invDate: string, frequency: string): string {
-  if (frequency === "monthly") return invDate.slice(0, 7);
+function invoicePeriod(dateOrPeriod: string, frequency: string): string {
+  if (frequency === "monthly") return dateOrPeriod.slice(0, 7);
   if (frequency === "quarterly") {
-    const m = parseInt(invDate.slice(5, 7), 10);
+    const m = parseInt(dateOrPeriod.slice(5, 7), 10);
     const q = m <= 3 ? "Q1" : m <= 6 ? "Q2" : m <= 9 ? "Q3" : "Q4";
-    return `${invDate.slice(0, 4)}-${q}`;
+    return `${dateOrPeriod.slice(0, 4)}-${q}`;
   }
-  return invDate.slice(0, 4);
+  return dateOrPeriod.slice(0, 4);
 }
 
 registerAgent("vendor-overbilling", {
@@ -54,12 +54,13 @@ registerAgent("vendor-overbilling", {
 
         const periodBuckets = new Map<string, number>();
         for (const inv of invs) {
-          const period = invoicePeriod(inv.date, freq);
+          const invPeriod = inv.periodStart ?? inv.date;
+          const period = invoicePeriod(invPeriod, freq);
           periodBuckets.set(period, (periodBuckets.get(period) ?? 0) + inv.amount);
         }
 
         for (const [period, periodTotal] of periodBuckets) {
-          if (periodTotal > contract.basePrice * 1.1) {
+          if (periodTotal > contract.basePrice) {
             const deviation = ((periodTotal - contract.basePrice) / contract.basePrice * 100).toFixed(0);
             comparisons.push({
               label: `${invs[0]!.vendorId} (${period})`,

@@ -2,9 +2,11 @@ import { registerAgent } from "./supervisor";
 import type { Comparison } from "../model/types";
 import { getFinancialRecordsByType, getHistoryDays } from "../db/queries";
 
-function isMonthComplete(month: string, payments: { date: string }[]): boolean {
-  const days = new Set(payments.filter((p) => p.date.startsWith(month)).map((p) => p.date.slice(8, 10)));
-  return days.size >= 20;
+function isMonthComplete(month: string): boolean {
+  const y = Number(month.slice(0, 4));
+  const m = Number(month.slice(5, 7));
+  const endOfMonth = new Date(y, m, 0, 23, 59, 59);
+  return new Date() > endOfMonth;
 }
 
 registerAgent("cashflow-risk", {
@@ -52,7 +54,7 @@ registerAgent("cashflow-risk", {
 
     const monthlyTotals = months.map(([m, vals]) => ({ month: m, total: vals.reduce((s, v) => s + v, 0) }));
 
-    const closedMonths = monthlyTotals.filter((m) => isMonthComplete(m.month, payments));
+    const closedMonths = monthlyTotals.filter((m) => isMonthComplete(m.month));
     if (closedMonths.length < 1) return [];
 
     const avgMonthlyBurn = closedMonths.reduce((s, m) => s + m.total, 0) / closedMonths.length;
