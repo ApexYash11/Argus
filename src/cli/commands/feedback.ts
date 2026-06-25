@@ -11,7 +11,7 @@ export async function submitFeedback(
     return { error: `Finding ${findingId} not found` };
   }
 
-  updateFindingStatus(findingId, action === "escape" ? "open" : action, reason);
+  updateFindingStatus(findingId, action === "escalate" ? "open" : action, reason);
 
   insertFeedback({
     id: `FB-${crypto.randomBytes(4).toString("hex").toUpperCase()}`,

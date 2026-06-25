@@ -24,19 +24,37 @@ export function insertFinancialRecord(record: FinancialRecord): void {
   );
 }
 
+function mapFinancialRecord(row: Record<string, unknown>): FinancialRecord {
+  return {
+    id: row.id as string,
+    type: row.type as FinancialRecord["type"],
+    vendorId: row.vendor_id as string,
+    amount: row.amount as number,
+    currency: row.currency as string,
+    date: row.date as string,
+    periodStart: row.period_start as string | undefined,
+    periodEnd: row.period_end as string | undefined,
+    description: row.description as string | undefined,
+    status: row.status as FinancialRecord["status"],
+    sourceDocId: row.source_doc_id as string | undefined,
+    raw: row.raw as string,
+    ingestedAt: row.ingested_at as string,
+  };
+}
+
 export function getFinancialRecordsByVendor(vendorId: string): FinancialRecord[] {
   const db = getDb();
-  return db.query("SELECT * FROM financial_records WHERE vendor_id = $vendorId ORDER BY date DESC").all({ $vendorId: vendorId }) as FinancialRecord[];
+  return (db.query("SELECT * FROM financial_records WHERE vendor_id = $vendorId ORDER BY date DESC").all({ $vendorId: vendorId }) as Record<string, unknown>[]).map(mapFinancialRecord);
 }
 
 export function getFinancialRecordsByType(type: string): FinancialRecord[] {
   const db = getDb();
-  return db.query("SELECT * FROM financial_records WHERE type = $type ORDER BY date DESC").all({ $type: type }) as FinancialRecord[];
+  return (db.query("SELECT * FROM financial_records WHERE type = $type ORDER BY date DESC").all({ $type: type }) as Record<string, unknown>[]).map(mapFinancialRecord);
 }
 
 export function getAllFinancialRecords(): FinancialRecord[] {
   const db = getDb();
-  return db.query("SELECT * FROM financial_records ORDER BY date DESC").all() as FinancialRecord[];
+  return (db.query("SELECT * FROM financial_records ORDER BY date DESC").all() as Record<string, unknown>[]).map(mapFinancialRecord);
 }
 
 export function getDateRange(): { min: string; max: string } | null {
@@ -54,6 +72,7 @@ export function upsertVendor(vendor: Vendor): void {
      ON CONFLICT(id) DO UPDATE SET
        canonical_name = excluded.canonical_name,
        aliases = excluded.aliases,
+       trust_score = excluded.trust_score,
        last_seen = excluded.last_seen`,
     {
       $id: vendor.id,
@@ -153,7 +172,7 @@ export function getFindings(filters?: { status?: string; severity?: string; agen
     params.$since = filters.since;
   }
   sql += " ORDER BY created_at DESC";
-  return db.query(sql).all(params) as Finding[];
+  return (db.query(sql).all(params) as Record<string, unknown>[]).map(rowToFinding);
 }
 
 export function getFindingById(id: string): Finding | null {

@@ -3,6 +3,8 @@ export interface LLMResponse {
   latencyMs: number;
 }
 
+const LLM_TIMEOUT = 30_000;
+
 export async function groqComplete(
   prompt: string,
   _systemPrompt?: string
@@ -13,31 +15,44 @@ export async function groqComplete(
   }
 
   const start = performance.now();
-  const res = await fetch("https://api.groq.com/openai/v1/chat/completions", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${apiKey}`,
-    },
-    body: JSON.stringify({
-      model: "llama-3.3-70b-versatile",
-      messages: [
-        { role: "system", content: _systemPrompt ?? "You are a financial investigation agent." },
-        { role: "user", content: prompt },
-      ],
-      temperature: 0.1,
-      max_tokens: 500,
-    }),
-  });
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), LLM_TIMEOUT);
 
-  if (!res.ok) {
-    const text = await res.text();
-    throw new Error(`Groq API error (${res.status}): ${text}`);
+  try {
+    const res = await fetch("https://api.groq.com/openai/v1/chat/completions", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${apiKey}`,
+      },
+      signal: controller.signal,
+      body: JSON.stringify({
+        model: "llama-3.3-70b-versatile",
+        messages: [
+          { role: "system", content: _systemPrompt ?? "You are a financial investigation agent." },
+          { role: "user", content: prompt },
+        ],
+        temperature: 0.1,
+        max_tokens: 500,
+      }),
+    });
+
+    if (!res.ok) {
+      const text = await res.text();
+      throw new Error(`Groq API error (${res.status}): ${text}`);
+    }
+
+    const data = await res.json();
+    const content = data.choices?.[0]?.message?.content;
+    if (typeof content !== "string") {
+      throw new Error("Groq response missing content");
+    }
+
+    return {
+      content,
+      latencyMs: Math.round(performance.now() - start),
+    };
+  } finally {
+    clearTimeout(timer);
   }
-
-  const data = await res.json();
-  return {
-    content: data.choices[0].message.content,
-    latencyMs: Math.round(performance.now() - start),
-  };
 }

@@ -86,6 +86,9 @@ CREATE TABLE IF NOT EXISTS calibration (
   PRIMARY KEY (workspace_id, agent_type, vendor_id)
 );
 
+CREATE UNIQUE INDEX IF NOT EXISTS idx_calibration_scope_unique
+ON calibration(workspace_id, agent_type, COALESCE(vendor_id, '__GLOBAL__'));
+
 CREATE TABLE IF NOT EXISTS scratchpad_runs (
   id TEXT PRIMARY KEY,
   trigger TEXT NOT NULL,

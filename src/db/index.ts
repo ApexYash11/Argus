@@ -12,6 +12,7 @@ export function getDb(): Database {
 }
 
 export function initDb(workspaceDir: string): Database {
+  if (db) closeDb();
   const dbPath = path.join(workspaceDir, ".audit", "spend-auditor.db");
   db = new Database(dbPath);
   db.exec("PRAGMA journal_mode = WAL");

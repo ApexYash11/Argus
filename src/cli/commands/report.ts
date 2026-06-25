@@ -1,7 +1,8 @@
 import { getFindings } from "../../db/queries";
 
 export async function generateReport(period?: string) {
-  const findings = getFindings();
+  const since = period ? period.replace(/^Q\d-/, "").replace(/-.*$/, "") + "-01" : undefined;
+  const findings = getFindings({ since });
   const openFindings = findings.filter((f) => f.status === "open");
   const criticalFindings = findings.filter((f) => f.severity === "critical");
   const totalImpact = findings.reduce((sum, f) => sum + (f.impactAmount ?? 0), 0);

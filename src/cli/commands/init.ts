@@ -23,8 +23,9 @@ export async function initWorkspace(dir: string, company?: string): Promise<void
   if (!fs.existsSync(configPath)) {
     const config = { ...DEFAULT_CONFIG, ...(company ? { company } : {}) };
     const validated = ConfigSchema.parse(config);
+    const safeCompany = validated.company.replace(/['":#\[\]{}&*!|>%@`\n\r]/g, "").slice(0, 100);
     const yaml = `# AI Spend Auditor Configuration
-company: ${validated.company}
+company: "${safeCompany}"
 currency: ${validated.currency}
 minRunwayMonths: ${validated.minRunwayMonths}
 minOperatingReserve: ${validated.minOperatingReserve}

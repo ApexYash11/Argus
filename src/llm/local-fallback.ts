@@ -48,7 +48,7 @@ function generateLocalResponse(prompt: string): string {
 
 function extractField(text: string, field: string): string | null {
   const patterns = [
-    new RegExp(`${field}[:\s]+"?([^"\\n,]+)"?`, "i"),
+    new RegExp(`${field}[:\\s]+"?([^"\\n,]+)"?`, "i"),
     new RegExp(`${field}["\\]]?:\\s*"?([^"\\n,]+)"?`, "i"),
   ];
   for (const pattern of patterns) {

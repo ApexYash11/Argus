@@ -165,8 +165,12 @@ async function main() {
         console.error("Error: specify --resolve, --dismiss, or --escalate");
         process.exit(1);
       }
-      const reason = flags.reason || flags.resolve || flags.dismiss || flags.escalate || undefined;
+      const reason = flags.reason || undefined;
       const res = await submitFeedback(findingId, action as any, reason as string);
+      if ("error" in res) {
+        console.error(res.error);
+        process.exit(1);
+      }
       console.log(res.message);
       break;
     }

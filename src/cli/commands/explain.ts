@@ -17,9 +17,14 @@ export async function explainFinding(
     trace = readScratchpadEvents(scratchpadPath);
   }
 
-  return {
-    finding,
-    evidence: showEvidence ? JSON.parse(finding.evidenceChain) : undefined,
-    trace,
-  };
+  let evidence;
+  if (showEvidence) {
+    try {
+      evidence = JSON.parse(finding.evidenceChain);
+    } catch {
+      evidence = { error: "malformed evidence chain", raw: finding.evidenceChain };
+    }
+  }
+
+  return { finding, evidence, trace };
 }

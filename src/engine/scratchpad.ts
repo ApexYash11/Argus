@@ -70,5 +70,11 @@ export function readScratchpadEvents(filePath: string): ScratchpadEntry[] {
   return content
     .split("\n")
     .filter((l) => l.trim())
-    .map((l) => JSON.parse(l) as ScratchpadEntry);
+    .flatMap((l) => {
+      try {
+        return [JSON.parse(l) as ScratchpadEntry];
+      } catch {
+        return [];
+      }
+    });
 }

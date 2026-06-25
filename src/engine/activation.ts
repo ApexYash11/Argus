@@ -76,7 +76,7 @@ function checkAgentActivation(
       if (!dataSources.includes("committed-expenses")) {
         missingData.push("committed-expenses.csv");
       }
-      if (historyDays > 0 && historyDays < 60) {
+      if (historyDays < 60) {
         return {
           agent,
           ready: false,
