@@ -3,14 +3,14 @@
   "version": "0.1.0",
   "description": "Autonomous financial investigation system for startups",
   "type": "module",
-  "module": "src/cli/index.ts",
+    "module": "src/cli/index.tsx",
   "bin": {
-    "audit": "src/cli/index.ts"
+    "audit": "src/cli/index.tsx"
   },
   "scripts": {
-    "dev": "bun run src/cli/index.ts",
-    "build": "bun build src/cli/index.ts --outdir dist",
-    "compile": "bun build --compile src/cli/index.ts --outfile dist/argus"
+    "dev": "bun run src/cli/index.tsx",
+    "build": "bun build src/cli/index.tsx --outdir dist",
+    "compile": "bun build --compile src/cli/index.tsx --outfile dist/argus"
   },
   "private": true,
   "devDependencies": {
