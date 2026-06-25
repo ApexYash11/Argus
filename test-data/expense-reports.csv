@@ -1,0 +1,16 @@
+employee,date,category,amount,has_receipt
+yash@example.com,2025-06-01,meals,4500,yes
+yash@example.com,2025-06-02,travel,12000,yes
+priya@example.com,2025-06-03,meals,2800,yes
+priya@example.com,2025-06-04,office-supplies,1500,yes
+rahul@example.com,2025-06-05,client-entertainment,25000,yes
+rahul@example.com,2025-06-06,meals,1800,no
+anika@example.com,2025-06-07,travel,8500,yes
+anika@example.com,2025-06-08,meals,6000,no
+vikram@example.com,2025-06-09,alcohol,3500,yes
+neha@example.com,2025-06-10,meals,2200,yes
+neha@example.com,2025-06-11,office-supplies,800,yes
+arjun@example.com,2025-06-12,travel,15000,yes
+kavya@example.com,2025-06-13,meals,1200,yes
+rohan@example.com,2025-06-14,client-entertainment,45000,yes
+rohan@example.com,2025-06-15,meals,3500,no

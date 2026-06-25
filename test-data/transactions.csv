@@ -1,0 +1,50 @@
+date,vendor_name,amount,reference,cleared
+2025-03-05,AWS India Pvt Ltd,45200,INV-2025-0301,yes
+2025-03-10,Google Cloud India,34000,INV-2025-0302,yes
+2025-03-12,Slack Technologies,1800,SUB-2025-0301,yes
+2025-03-15,Razorpay Payments Pvt Ltd,25000,INV-2025-0303,yes
+2025-03-20,Zoho Corporation,12000,INV-2025-0304,yes
+2025-03-25,Freshworks Inc,8500,INV-2025-0305,yes
+2025-03-28,AWS India Pvt Ltd,22300,INV-2025-0306,yes
+2025-04-02,Microsoft India,15000,INV-2025-0401,yes
+2025-04-05,AWS India Pvt Ltd,45200,INV-2025-0402,yes
+2025-04-08,Google Cloud India,34000,INV-2025-0403,yes
+2025-04-10,Slack Technologies,1800,SUB-2025-0401,yes
+2025-04-12,Razorpay Payments Pvt Ltd,32000,INV-2025-0404,yes
+2025-04-15,DigitalOcean Inc,9500,INV-2025-0405,yes
+2025-04-18,Zoho Corporation,12000,INV-2025-0406,yes
+2025-04-20,Freshworks Inc,8500,INV-2025-0407,yes
+2025-04-22,AWS India Pvt Ltd,22300,INV-2025-0408,yes
+2025-04-25,Cloudflare Inc,4500,INV-2025-0409,yes
+2025-04-28,Microsoft India,15000,INV-2025-0410,yes
+2025-05-02,AWS India Pvt Ltd,45200,INV-2025-0501,yes
+2025-05-05,Google Cloud India,34000,INV-2025-0502,yes
+2025-05-08,Slack Technologies,1800,SUB-2025-0501,yes
+2025-05-10,Razorpay Payments Pvt Ltd,28000,INV-2025-0503,yes
+2025-05-12,Zoho Corporation,12000,INV-2025-0504,yes
+2025-05-15,Freshworks Inc,8500,INV-2025-0505,yes
+2025-05-18,AWS India Pvt Ltd,22300,INV-2025-0506,yes
+2025-05-20,Microsoft India,15000,INV-2025-0507,yes
+2025-05-22,Cloudflare Inc,4500,INV-2025-0508,yes
+2025-05-25,DigitalOcean Inc,9500,INV-2025-0509,yes
+2025-05-28,HubSpot India,15000,INV-2025-0510,yes
+2025-06-02,AWS India Pvt Ltd,45200,INV-2025-0601,yes
+2025-06-05,Google Cloud India,34000,INV-2025-0602,yes
+2025-06-08,Slack Technologies,1800,SUB-2025-0601,yes
+2025-06-10,Razorpay Payments Pvt Ltd,35000,INV-2025-0603,yes
+2025-06-12,AWS India Pvt Ltd,45200,INV-2025-0402,yes
+2025-06-12,Zoho Corporation,12000,INV-2025-0604,yes
+2025-06-14,Freshworks Inc,8500,INV-2025-0605,yes
+2025-06-15,AWS India Pvt Ltd,22300,INV-2025-0606,yes
+2025-06-16,Facebook India,125000,INV-2025-0607,yes
+2025-06-16,Google Ads India,98000,INV-2025-0608,yes
+2025-06-16,LinkedIn India,75000,INV-2025-0609,yes
+2025-06-17,Microsoft India,15000,INV-2025-0610,yes
+2025-06-18,Cloudflare Inc,4500,INV-2025-0611,yes
+2025-06-19,DigitalOcean Inc,9500,INV-2025-0612,yes
+2025-06-20,HubSpot India,15000,INV-2025-0613,yes
+2025-06-21,Facebook India,50000,INV-2025-0614,yes
+2025-06-22,Google Ads India,45000,INV-2025-0615,yes
+2025-06-23,LinkedIn India,35000,INV-2025-0616,yes
+2025-06-24,Zoho Corporation,12000,INV-2025-0617,yes
+2025-06-25,AWS India Pvt Ltd,22300,INV-2025-0618,yes
