@@ -43,6 +43,7 @@ export async function runInvestigation(
     confidence: 0,
     iterations: 0,
     events: [],
+    effectiveFloor: floor,
   };
 
   function recordEvent(event: AuditEvent): void {

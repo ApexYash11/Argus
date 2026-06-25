@@ -58,7 +58,7 @@ export async function runSupervisor(
 
         if (hadFinding) {
           findingsCount++;
-        } else if (state.finding === undefined && state.confidence >= (config?.confidenceFloor ?? 0.7)) {
+        } else if (state.finding === undefined && state.confidence >= (state.effectiveFloor ?? 0.7)) {
           yield { type: "step", agent: agentType, message: `Finding suppressed — duplicate fingerprint already exists for this period` };
         } else if (state.iterations >= (config?.maxIterations ?? 5)) {
           yield { type: "step", agent: agentType, message: `No finding — max iterations (${state.iterations}) reached at confidence ${(state.confidence * 100).toFixed(0)}%` };

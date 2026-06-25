@@ -71,14 +71,8 @@ const cli = meow(
   }
 );
 
-process.on("SIGINT", () => {
-  stopWatcher();
-  process.exit(0);
-});
-process.on("SIGTERM", () => {
-  stopWatcher();
-  process.exit(0);
-});
+process.on("SIGINT", () => { stopWatcher(); });
+process.on("SIGTERM", () => { stopWatcher(); });
 
 const [command, ...inputArgs] = cli.input;
 const flags = cli.flags;

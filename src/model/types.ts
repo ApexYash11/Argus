@@ -108,6 +108,7 @@ export interface InvestigationState {
   iterations: number;
   finding?: Finding;
   events: AuditEvent[];
+  effectiveFloor?: number;
 }
 
 export interface FinancialEvent {

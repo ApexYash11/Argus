@@ -213,7 +213,7 @@ export function insertFeedback(feedback: Feedback): void {
 
 export function getCalibrationsForAgent(agentType: string): Calibration[] {
   const db = getDb();
-  return (db.query("SELECT * FROM calibration WHERE agent_type = $agentType").all({ $agentType: agentType }) as Record<string, unknown>[]).map((row) => ({
+  return (db.query("SELECT * FROM calibration WHERE workspace_id = 'default' AND agent_type = $agentType").all({ $agentType: agentType }) as Record<string, unknown>[]).map((row) => ({
     workspaceId: row.workspace_id as string,
     agentType: row.agent_type as Calibration["agentType"],
     vendorId: row.vendor_id as string | undefined,
