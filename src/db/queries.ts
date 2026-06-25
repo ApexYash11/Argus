@@ -247,6 +247,55 @@ export function upsertCalibration(cal: Calibration): void {
   );
 }
 
+export interface UsageRecord {
+  id: string;
+  employeeEmail: string;
+  tool: string;
+  lastLogin: string;
+  vendorId?: string;
+  ingestedAt: string;
+}
+
+export function insertUsageRecord(record: UsageRecord): void {
+  const db = getDb();
+  db.run(
+    `INSERT OR REPLACE INTO usage_records (id, employee_email, tool, last_login, vendor_id, ingested_at)
+     VALUES ($id, $email, $tool, $lastLogin, $vendorId, $ingestedAt)`,
+    {
+      $id: record.id,
+      $email: record.employeeEmail,
+      $tool: record.tool,
+      $lastLogin: record.lastLogin,
+      $vendorId: record.vendorId ?? null,
+      $ingestedAt: record.ingestedAt,
+    }
+  );
+}
+
+export function getAllUsageRecords(): UsageRecord[] {
+  const db = getDb();
+  return (db.query("SELECT * FROM usage_records ORDER BY last_login DESC").all() as Record<string, unknown>[]).map((row) => ({
+    id: row.id as string,
+    employeeEmail: row.employee_email as string,
+    tool: row.tool as string,
+    lastLogin: row.last_login as string,
+    vendorId: row.vendor_id as string | undefined,
+    ingestedAt: row.ingested_at as string,
+  }));
+}
+
+export function getUsageByTool(tool: string): UsageRecord[] {
+  const db = getDb();
+  return (db.query("SELECT * FROM usage_records WHERE tool = $tool ORDER BY last_login DESC").all({ $tool: tool }) as Record<string, unknown>[]).map((row) => ({
+    id: row.id as string,
+    employeeEmail: row.employee_email as string,
+    tool: row.tool as string,
+    lastLogin: row.last_login as string,
+    vendorId: row.vendor_id as string | undefined,
+    ingestedAt: row.ingested_at as string,
+  }));
+}
+
 export function getRecordCount(): number {
   const db = getDb();
   const row = db.query("SELECT COUNT(*) as count FROM financial_records").get() as { count: number };

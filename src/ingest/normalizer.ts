@@ -14,6 +14,13 @@ export interface NormalizedRecord {
   vendorResolution: { vendorId: string; canonicalName: string; confidence: number; method: string };
 }
 
+export interface NormalizedUsage {
+  employeeEmail: string;
+  tool: string;
+  lastLogin: string;
+  vendorId: string;
+}
+
 function generateRecordId(): string {
   return `FR-${Date.now().toString(36).toUpperCase()}${crypto.randomBytes(3).toString("hex").toUpperCase()}`;
 }
@@ -48,6 +55,16 @@ function inferPeriod(sub: Record<string, unknown>): { start?: string; end?: stri
     return { start: start.toISOString().slice(0, 10), end: d.toISOString().slice(0, 10) };
   }
   return {};
+}
+
+export function normalizeUsageRecord(raw: RawRecord): NormalizedUsage | null {
+  if (raw._type !== "usage") return null;
+  const email = String(raw.employee_email ?? "");
+  const tool = String(raw.tool ?? "");
+  const lastLogin = String(raw.last_login ?? "");
+  if (!email || !tool || !lastLogin) return null;
+  const resolved = resolveVendor(tool);
+  return { employeeEmail: email, tool, lastLogin, vendorId: resolved.vendorId };
 }
 
 export function normalizeRecord(raw: RawRecord, currency: string = "INR"): NormalizedRecord {

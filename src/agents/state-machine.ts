@@ -44,7 +44,12 @@ export async function runInvestigation(
 
   const ctx: AgentContext = { agentType, state, emit, agents: {} as any };
 
-  emit({ type: "agent_start", agent: agentType, description: `Starting ${agentType} investigation` });
+  function recordEvent(event: AuditEvent): void {
+    state.events.push(event);
+    emit(event);
+  }
+
+  recordEvent({ type: "agent_start", agent: agentType, description: `Starting ${agentType} investigation` });
 
   await agentDef.classify(ctx);
   state.iterations++;
@@ -56,9 +61,7 @@ export async function runInvestigation(
     const { score, reason } = await agentDef.score(ctx);
     state.confidence = score;
 
-    emit({ type: "confidence", score, reason });
-
-    state.events.push({ type: "confidence", score, reason } as any);
+    recordEvent({ type: "confidence", score, reason });
 
     if (score >= floor) {
       await generateFinding(ctx);
@@ -67,9 +70,10 @@ export async function runInvestigation(
 
     if (state.iterations >= maxIters) break;
     state.iterations++;
-    emit({ type: "step", agent: agentType, message: `Confidence ${(score * 100).toFixed(0)}% < ${(floor * 100).toFixed(0)}% floor, re-investigating (pass ${state.iterations})` });
+    recordEvent({ type: "step", agent: agentType, message: `Confidence ${(score * 100).toFixed(0)}% < ${(floor * 100).toFixed(0)}% floor, re-investigating (pass ${state.iterations})` });
   }
 
   emit({ type: "done", totalFindings: state.finding ? 1 : 0, durationMs: 0 });
+  recordEvent({ type: "done", totalFindings: state.finding ? 1 : 0, durationMs: 0 });
   return state;
 }
