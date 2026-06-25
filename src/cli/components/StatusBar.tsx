@@ -8,11 +8,16 @@ interface AgentStatus {
   missingData?: string[];
 }
 
+interface DataSourceInfo {
+  name: string;
+  recordCount: number;
+}
+
 interface Props {
   recordCount: number;
   vendorCount: number;
   agents: AgentStatus[];
-  dataSources: string[];
+  dataSources: DataSourceInfo[];
 }
 
 export default function StatusBar({ recordCount, vendorCount, agents, dataSources }: Props) {
@@ -38,9 +43,14 @@ export default function StatusBar({ recordCount, vendorCount, agents, dataSource
         <Text bold underline>Data Sources</Text>
       </Box>
       {dataSources.map((ds) => (
-        <Box key={ds} marginLeft={1}>
-          <Text color="#22c55e">{"\u2713 "}</Text>
-          <Text>{ds}</Text>
+        <Box key={ds.name} marginLeft={1}>
+          {ds.recordCount > 0 ? (
+            <Text color="#22c55e">{"\u2713 "}</Text>
+          ) : (
+            <Text color="#ef4444">{"\u2717 "}</Text>
+          )}
+          <Text>{ds.name}</Text>
+          <Text color="#888"> ({ds.recordCount} records)</Text>
         </Box>
       ))}
 

@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from "react";
 import { Text, Box } from "ink";
 import Spinner from "ink-spinner";
-import type { AuditEvent, Finding } from "../../model/types";
+import type { AuditEvent } from "../../model/types";
 
 interface Props {
   stream: AsyncGenerator<AuditEvent>;
@@ -11,24 +11,27 @@ interface Props {
 export default function InvestigationStream({ stream, onComplete }: Props) {
   const [messages, setMessages] = useState<{ text: string; type: string }[]>([]);
   const [isRunning, setIsRunning] = useState(true);
-  const [findings, setFindings] = useState<Finding[]>([]);
   const [done, setDone] = useState<{ totalFindings: number; durationMs: number } | null>(null);
 
   useEffect(() => {
     let cancelled = false;
     (async () => {
-      for await (const event of stream) {
-        if (cancelled) break;
-        const line = formatEvent(event);
-        if (line) setMessages((prev) => [...prev, line]);
-        if (event.type === "finding") {
-          setFindings((prev) => [...prev, event.finding]);
+      try {
+        for await (const event of stream) {
+          if (cancelled) break;
+          const line = formatEvent(event);
+          if (line) setMessages((prev) => [...prev.slice(-199), line]);
+          if (event.type === "done") {
+            setDone({ totalFindings: event.totalFindings, durationMs: event.durationMs });
+            setIsRunning(false);
+            setTimeout(() => onComplete?.(), 100);
+          }
         }
-        if (event.type === "done") {
-          setDone({ totalFindings: event.totalFindings, durationMs: event.durationMs });
-          setIsRunning(false);
-          onComplete?.();
-        }
+      } catch (err) {
+        if (cancelled) return;
+        setMessages((prev) => [...prev.slice(-199), { text: `Error: ${(err as Error).message}`, type: "step" }]);
+        setIsRunning(false);
+        setTimeout(() => onComplete?.(), 100);
       }
     })();
     return () => { cancelled = true; };

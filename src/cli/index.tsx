@@ -174,14 +174,13 @@ async function main() {
 
     case "status": {
       if (!ensureDb()) { console.log("No workspace found. Run `audit init` first."); break; }
-      const dataSources = ["subscriptions", "transactions", "expense-reports", "invoices", "committed-expenses"];
-      const status = await getStatus(dataSources);
+      const status = await getStatus();
       const { waitUntilExit, unmount } = render(
         <App command="status" props={{
           recordCount: status.recordCount,
           vendorCount: status.vendorCount,
           agents: status.agents,
-          dataSources,
+          dataSources: status.dataSources,
         }} />
       );
       unmount();

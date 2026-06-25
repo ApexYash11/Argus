@@ -77,19 +77,13 @@ export default function EvidenceChain({ finding, evidence, trace, showTrace }: P
             </Box>
           ))}
           {evidence.comparisons?.map((c, i) => (
-            <Box key={`cmp-${i}`} marginLeft={1} marginTop={1}>
-              <Text>{c.label}</Text>
-            </Box>
-          ))}
-          {evidence.comparisons?.map((c, i) => (
-            <Box key={`cmpd-${i}`} marginLeft={3}>
-              <Text>expected: {c.expected}</Text>
-            </Box>
-          ))}
-          {evidence.comparisons?.map((c, i) => (
-            <Box key={`cmpa-${i}`} marginLeft={3}>
-              <Text>actual: {c.actual}</Text>
-              {c.delta && <Text color="#eab308"> ({c.delta})</Text>}
+            <Box key={i} marginLeft={1} marginTop={1} flexDirection="column">
+              <Box><Text>{c.label}</Text></Box>
+              <Box marginLeft={2}><Text>expected: {c.expected}</Text></Box>
+              <Box marginLeft={2}>
+                <Text>actual: {c.actual}</Text>
+                {c.delta && <Text color="#eab308"> ({c.delta})</Text>}
+              </Box>
             </Box>
           ))}
         </Box>

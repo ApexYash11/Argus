@@ -65,7 +65,7 @@ export default function App({ command, props }: AppProps) {
           recordCount={(props?.recordCount as number) ?? 0}
           vendorCount={(props?.vendorCount as number) ?? 0}
           agents={(props?.agents as AgentStatus[]) ?? []}
-          dataSources={(props?.dataSources as string[]) ?? []}
+          dataSources={(props?.dataSources as { name: string; recordCount: number }[]) ?? []}
         />
       );
     }

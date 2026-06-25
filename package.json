@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "description": "Autonomous financial investigation system for startups",
   "type": "module",
-    "module": "src/cli/index.tsx",
+  "module": "src/cli/index.tsx",
   "bin": {
     "audit": "src/cli/index.tsx"
   },

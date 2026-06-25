@@ -31,7 +31,7 @@ export default function FindingsTable({ findings }: Props) {
     status: f.status,
     title: f.title.length > 50 ? f.title.slice(0, 47) + "..." : f.title,
     confidence: (f.confidence * 100).toFixed(0) + "%",
-    impact: f.impactAmount ? `${f.impactCurrency ?? "INR"} ${f.impactAmount.toLocaleString()}` : "-",
+    impact: f.impactAmount != null ? `${f.impactCurrency ?? "INR"} ${f.impactAmount.toLocaleString()}` : "-",
     agent: f.agentType,
     created: f.createdAt.slice(0, 10),
   }));

@@ -334,6 +334,12 @@ export function getRecordCount(): number {
   return row.count;
 }
 
+export function getRecordCountByType(type: string): number {
+  const db = getDb();
+  const row = db.query("SELECT COUNT(*) as count FROM financial_records WHERE type = $type").get({ $type: type }) as { count: number };
+  return row.count;
+}
+
 export function getHistoryDays(): number {
   const db = getDb();
   const row = db.query("SELECT (julianday(MAX(date)) - julianday(MIN(date))) as days FROM financial_records").get() as { days: number | null };
