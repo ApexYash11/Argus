@@ -97,25 +97,11 @@ async function main() {
 
     case "investigate": {
       ensureDb();
-      let findingsCount = 0;
       const stream = await investigate(flags.type as any, flags.watch);
-      for await (const event of stream) {
-        if (event.type === "step") console.log(`  ◆ ${event.message}`);
-        if (event.type === "evidence_found") console.log(`    → ${event.key}: ${event.value}`);
-        if (event.type === "comparison") console.log(`    ${event.label}: expected ${event.expected}, got ${event.actual}${event.delta ? ` (${event.delta})` : ""}`);
-        if (event.type === "confidence") console.log(`    Confidence: ${(event.score * 100).toFixed(0)}% — ${event.reason}`);
-        if (event.type === "finding") {
-          findingsCount++;
-          const f = event.finding;
-          const tag = f.severity === "critical" ? "⚠" : f.severity === "high" ? "!" : "·";
-          console.log(`  ${tag} ${f.id} | ${f.title} | [${f.severity}] ${(f.confidence * 100).toFixed(0)}%`);
-        }
-        if (event.type === "agent_skipped") console.log(`  ~ ${event.agent}: ${event.reason}`);
-        if (event.type === "done") {
-          console.log(`\n  Done — ${findingsCount} finding(s) in ${event.durationMs}ms`);
-          console.log('  Run `audit findings` to review.');
-        }
-      }
+      const { waitUntilExit, unmount } = render(
+        <App command="investigate" props={{ stream, onComplete: () => unmount() }} />
+      );
+      await waitUntilExit;
       break;
     }
 
@@ -129,12 +115,13 @@ async function main() {
       });
       if (findings.length === 0) {
         console.log("No findings found.");
-      } else {
-        for (const f of findings) {
-          const tag = f.severity === "critical" ? "⚠" : f.severity === "high" ? "!" : "·";
-          console.log(`${tag} ${f.id} | ${f.title} | [${f.severity}] ${f.confidence * 100}% | ${f.status}`);
-        }
+        break;
       }
+      const { waitUntilExit, unmount } = render(
+        <App command="findings" props={{ findings }} />
+      );
+      unmount();
+      await waitUntilExit;
       break;
     }
 
@@ -150,19 +137,16 @@ async function main() {
         console.error(res.error);
         process.exit(1);
       }
-      console.log(`${res.finding.severity === "critical" ? "⚠" : " "}  ${res.finding.id} | ${res.finding.severity.toUpperCase()}`);
-      console.log(`Title: ${res.finding.title}`);
-      console.log(`Summary: ${res.finding.summary}`);
-      console.log(`Confidence: ${(res.finding.confidence * 100).toFixed(0)}%`);
-      if (res.finding.impactAmount) {
-        console.log(`Impact: ${res.finding.impactCurrency ?? "INR"} ${res.finding.impactAmount.toLocaleString()}`);
-      }
-      if (res.trace && res.trace.length > 0) {
-        console.log("\nTrace:");
-        for (const entry of res.trace) {
-          console.log(`  ${entry.timestamp} [${entry.type}] ${entry.message ?? ""}`);
-        }
-      }
+      const { waitUntilExit, unmount } = render(
+        <App command="explain" props={{
+          finding: res.finding,
+          evidence: res.evidence,
+          trace: res.trace,
+          showTrace: flags.trace,
+        }} />
+      );
+      unmount();
+      await waitUntilExit;
       break;
     }
 
@@ -190,15 +174,17 @@ async function main() {
 
     case "status": {
       if (!ensureDb()) { console.log("No workspace found. Run `audit init` first."); break; }
-      const dataSources = ["subscriptions", "transactions", "expense-reports", "invoices", "committed-expenses"];
-      const status = await getStatus(dataSources);
-      console.log(`Records: ${status.recordCount}`);
-      console.log(`Vendors: ${status.vendorCount}`);
-      console.log("\nAgents:");
-      for (const agent of status.agents) {
-        const icon = agent.ready ? "✓" : agent.reason ? "~" : "✗";
-        console.log(`  ${icon} ${agent.agent} ${agent.ready ? "ready" : agent.reason ?? `needs: ${agent.missingData.join(", ")}`}`);
-      }
+      const status = await getStatus();
+      const { waitUntilExit, unmount } = render(
+        <App command="status" props={{
+          recordCount: status.recordCount,
+          vendorCount: status.vendorCount,
+          agents: status.agents,
+          dataSources: status.dataSources,
+        }} />
+      );
+      unmount();
+      await waitUntilExit;
       break;
     }
 
