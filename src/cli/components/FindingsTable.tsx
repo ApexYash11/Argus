@@ -39,7 +39,7 @@ export default function FindingsTable({ findings }: Props) {
   return (
     <Box flexDirection="column">
       <Box>
-        <Text color={headerColor}>{"ID".padEnd(18)}</Text>
+        <Text color={headerColor}>{"ID".padEnd(24)}</Text>
         <Text color={headerColor}>{"Sev".padEnd(10)}</Text>
         <Text color={headerColor}>{"Status".padEnd(10)}</Text>
         <Text color={headerColor}>{"Title".padEnd(52)}</Text>
@@ -47,10 +47,10 @@ export default function FindingsTable({ findings }: Props) {
         <Text color={headerColor}>{"Impact".padEnd(16)}</Text>
         <Text color={headerColor}>{"Date".padEnd(12)}</Text>
       </Box>
-      <Text color={headerColor}>{"\u2500".repeat(120)}</Text>
+      <Text color={headerColor}>{"\u2500".repeat(126)}</Text>
       {rows.map((r, i) => (
         <Box key={i}>
-          <Text>{r.id.padEnd(18)}</Text>
+          <Text>{r.id.padEnd(24)}</Text>
           <Text color={SEVERITY_COLORS[r.severity] ?? "#fff"}>{r.severity.padEnd(10)}</Text>
           <Text color={STATUS_COLORS[r.status] ?? "#fff"}>{r.status.padEnd(10)}</Text>
           <Text>{r.title.padEnd(52)}</Text>
