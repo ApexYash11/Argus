@@ -7,7 +7,7 @@ function Run-Step {
   param([string]$Desc, [scriptblock]$Cmd)
   Write-Host $Desc -ForegroundColor Green
   & $Cmd
-  if ($LASTEXITCODE -ne 0) { Write-Host "FAILED at: $Desc" -ForegroundColor Red; exit 1 }
+  if ($LASTEXITCODE -ne 0) { Write-Host "FAILED at: $Desc" -ForegroundColor Red; exit $LASTEXITCODE }
 }
 
 Write-Host "╔══════════════════════════════════════════════╗" -ForegroundColor Cyan
