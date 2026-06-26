@@ -1,6 +1,7 @@
 import React from "react";
 import { Text, Box } from "ink";
 import type { Finding } from "../../model/types";
+import { C } from "../theme.js";
 
 interface EvidenceItem {
   key: string;
@@ -34,7 +35,7 @@ export default function EvidenceChain({ finding, evidence, trace, showTrace }: P
       <Box>
         <Text bold>{finding.id}</Text>
         <Text> | </Text>
-        <Text color={finding.severity === "critical" ? "#ef4444" : finding.severity === "high" ? "#f97316" : "#eab308"}>
+        <Text color={finding.severity === "critical" ? C.red : finding.severity === "high" ? C.orange : C.yellow}>
           {finding.severity.toUpperCase()}
         </Text>
       </Box>
@@ -72,7 +73,7 @@ export default function EvidenceChain({ finding, evidence, trace, showTrace }: P
           <Text bold underline>Evidence Chain</Text>
           {evidence.evidence?.map((e, i) => (
             <Box key={i} marginLeft={1}>
-              <Text color="#a855f7">{"\u2192 "}</Text>
+              <Text color={C.purple}>{"\u2192 "}</Text>
               <Text>{e.key}: {e.value.slice(0, 200)}</Text>
             </Box>
           ))}
@@ -82,7 +83,7 @@ export default function EvidenceChain({ finding, evidence, trace, showTrace }: P
               <Box marginLeft={2}><Text>expected: {c.expected}</Text></Box>
               <Box marginLeft={2}>
                 <Text>actual: {c.actual}</Text>
-                {c.delta && <Text color="#eab308"> ({c.delta})</Text>}
+                {c.delta && <Text color={C.yellow}> ({c.delta})</Text>}
               </Box>
             </Box>
           ))}
@@ -94,9 +95,9 @@ export default function EvidenceChain({ finding, evidence, trace, showTrace }: P
           <Text bold underline>Investigation Trace</Text>
           {trace.map((t, i) => (
             <Box key={i} marginLeft={1}>
-              <Text color="#888">{t.timestamp?.slice(11, 19) ?? ""}</Text>
+              <Text color={C.muted}>{t.timestamp?.slice(11, 19) ?? ""}</Text>
               <Text> [</Text>
-              <Text color="#3b82f6">{t.type}</Text>
+              <Text color={C.blue}>{t.type}</Text>
               <Text>] {t.message ?? ""}</Text>
             </Box>
           ))}

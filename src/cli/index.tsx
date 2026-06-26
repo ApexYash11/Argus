@@ -206,7 +206,14 @@ async function main() {
     }
 
     default:
-      cli.showHelp();
+      const auditDir = path.join(process.cwd(), ".audit");
+      if (!fs.existsSync(auditDir)) {
+        const { default: WelcomeFlow } = await import("./components/WelcomeFlow.js");
+        const { waitUntilExit } = render(<WelcomeFlow />);
+        await waitUntilExit;
+      } else {
+        cli.showHelp();
+      }
   }
 }
 

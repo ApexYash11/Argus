@@ -1,22 +1,23 @@
 import React from "react";
 import { Text, Box } from "ink";
 import type { Finding } from "../../model/types";
+import { C } from "../theme.js";
 
 interface Props {
   finding: Finding;
 }
 
 const SEVERITY_COLORS: Record<string, string> = {
-  critical: "#ef4444",
-  high: "#f97316",
-  medium: "#eab308",
-  low: "#22c55e",
+  critical: C.red,
+  high: C.orange,
+  medium: C.yellow,
+  low: C.green,
 };
 
 const STATUS_COLORS: Record<string, string> = {
-  open: "#3b82f6",
-  resolved: "#22c55e",
-  dismissed: "#888888",
+  open: C.blue,
+  resolved: C.green,
+  dismissed: C.muted,
 };
 
 export default function FindingCard({ finding }: Props) {
@@ -48,12 +49,12 @@ export default function FindingCard({ finding }: Props) {
         </Box>
       )}
       <Box>
-        <Text color="#888">Agent: {finding.agentType}</Text>
-        {finding.vendorId && <Text color="#888">  Vendor: {finding.vendorId}</Text>}
+        <Text color={C.muted}>Agent: {finding.agentType}</Text>
+        {finding.vendorId && <Text color={C.muted}>  Vendor: {finding.vendorId}</Text>}
       </Box>
       <Box>
-        <Text color="#888">Created: {finding.createdAt.slice(0, 10)}</Text>
-        {finding.resolvedAt && <Text color="#888">  Resolved: {finding.resolvedAt.slice(0, 10)}</Text>}
+        <Text color={C.muted}>Created: {finding.createdAt.slice(0, 10)}</Text>
+        {finding.resolvedAt && <Text color={C.muted}>  Resolved: {finding.resolvedAt.slice(0, 10)}</Text>}
       </Box>
     </Box>
   );
