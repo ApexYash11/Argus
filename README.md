@@ -14,15 +14,21 @@ cd argus
 bun install
 
 # Standalone binary (no Bun required at runtime)
-bun run compile
-./dist/argus --help
+bun run compile          # outputs dist/argus-linux
+./dist/argus-linux --help
+
+# Or add to PATH for bare `audit` commands:
+# export PATH="$PWD/dist:$PATH"
 ```
 
 ## Quickstart
 
 ```bash
 # Initialize workspace
-audit init --company "Acme Corp"
+bun run src/cli/index.tsx init --company "Acme Corp"
+
+# Or if the binary is on PATH:
+# audit init --company "Acme Corp"
 
 # Ingest financial data
 audit ingest transactions.csv
@@ -143,7 +149,7 @@ Key thresholds:
 bun run dev          # Run CLI in dev mode
 bun run build        # Bundle as JS
 bun run compile      # Compile standalone binary
-bun run demo.ps1     # Run end-to-end demo (Windows)
+./demo.ps1           # Run end-to-end demo (Windows PowerShell)
 ./demo.sh            # Run end-to-end demo (Linux/Mac)
 ```
 

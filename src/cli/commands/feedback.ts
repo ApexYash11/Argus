@@ -11,7 +11,7 @@ export async function submitFeedback(
     return { error: `Finding ${findingId} not found` };
   }
 
-  const status = action === "escalate" ? "open" : action === "dismiss" ? "dismissed" : action;
+  const status = action === "escalate" ? "open" : action === "dismiss" ? "dismissed" : "resolved";
   updateFindingStatus(findingId, status, reason);
 
   insertFeedback({
