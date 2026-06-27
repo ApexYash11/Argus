@@ -211,11 +211,10 @@ async function main() {
     }
 
     case "chat": {
-      const auditDir = path.join(cwd, ".audit");
-      if (!fs.existsSync(auditDir)) {
+      if (!ensureDb(cwd)) {
         await initWorkspace(cwd, flags.company || "My Company");
+        initDb(cwd);
       }
-      ensureDb(cwd);
       await startChat(cwd);
       break;
     }

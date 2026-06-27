@@ -6,7 +6,7 @@ import type { ChatEvent } from "../../model/types";
 import { handleChatMessage } from "../commands/chat";
 import { BANNER, C, SYM } from "../theme";
 
-const STATUS_BAR = "\u2578ARGUS\u257A  chat mode  \u00B7  type \"exit\" to quit  \u00B7  Ctrl+C to stop";
+const STATUS_BAR = "\u2578ARGUS\u257A  chat mode  \u00B7  type \"exit\" to quit  \u00B7  Esc to cancel";
 const RESERVED_LINES = 6;
 
 interface Message {
@@ -52,13 +52,10 @@ export default function ChatUI({ cwd }: { cwd: string }) {
     if (key.escape) {
       if (abortRef.current) {
         abortRef.current.abort();
-        abortRef.current = null;
-        processingRef.current = false;
-        setProcessing(false);
-        setStatusText("Cancelled.");
+        setStatusText("Cancelling...");
       }
     }
-    if (key.ctrl && key.shift) {
+    if (key.ctrl && key.shift && key.return) {
       exit();
     }
     if (key.upArrow) {

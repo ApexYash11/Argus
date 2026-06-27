@@ -57,6 +57,8 @@ export async function runSupervisor(
           eventsBuffer.push(event);
         }, config, signal);
 
+        if (signal?.aborted) break;
+
         let hadFinding = false;
         for (const event of eventsBuffer) {
           yield event;

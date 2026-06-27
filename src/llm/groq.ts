@@ -62,6 +62,31 @@ export async function groqComplete(
   }
 }
 
+function timeoutSignal(ms: number): { signal: AbortSignal; clear: () => void } {
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), ms);
+  return {
+    signal: ctrl.signal,
+    clear: () => clearTimeout(timer),
+  };
+}
+
+function combineSignals(...signals: (AbortSignal | undefined)[]): { signal: AbortSignal; cleanup: () => void } {
+  const ctrl = new AbortController();
+  const cleanups: (() => void)[] = [];
+  for (const sig of signals) {
+    if (!sig) continue;
+    if (sig.aborted) { ctrl.abort(sig.reason); break; }
+    const onAbort = () => ctrl.abort(sig.reason);
+    sig.addEventListener("abort", onAbort);
+    cleanups.push(() => sig.removeEventListener("abort", onAbort));
+  }
+  return {
+    signal: ctrl.signal,
+    cleanup: () => { for (const fn of cleanups) fn(); },
+  };
+}
+
 export async function* groqStream(
   prompt: string,
   systemPrompt?: string,
@@ -73,6 +98,8 @@ export async function* groqStream(
     return;
   }
 
+  const timeout = timeoutSignal(LLM_TIMEOUT);
+  const combined = combineSignals(signal, timeout.signal);
   const start = performance.now();
   let fullText = "";
 
@@ -83,7 +110,7 @@ export async function* groqStream(
         "Content-Type": "application/json",
         Authorization: `Bearer ${apiKey}`,
       },
-      signal,
+      signal: combined.signal,
       body: JSON.stringify({
         model: "llama-3.3-70b-versatile",
         stream: true,
@@ -111,7 +138,7 @@ export async function* groqStream(
     const decoder = new TextDecoder();
     let buffer = "";
 
-    while (true) {
+    loop: while (true) {
       const { done, value } = await reader.read();
       if (done) break;
 
@@ -123,7 +150,7 @@ export async function* groqStream(
         const trimmed = line.trim();
         if (!trimmed || !trimmed.startsWith("data: ")) continue;
         const data = trimmed.slice(6);
-        if (data === "[DONE]") break;
+        if (data === "[DONE]") break loop;
 
         try {
           const parsed = JSON.parse(data);
@@ -137,6 +164,26 @@ export async function* groqStream(
         }
       }
     }
+
+    // Process any remaining data in buffer (last line without trailing newline)
+    if (buffer.trim()) {
+      const trimmed = buffer.trim();
+      if (trimmed.startsWith("data: ")) {
+        const data = trimmed.slice(6);
+        if (data !== "[DONE]") {
+          try {
+            const parsed = JSON.parse(data);
+            const delta = parsed.choices?.[0]?.delta?.content;
+            if (delta) {
+              fullText += delta;
+              yield { type: "token", text: delta };
+            }
+          } catch {
+            // skip malformed JSON
+          }
+        }
+      }
+    }
   } catch (err: any) {
     if (err.name === "AbortError") {
       yield { type: "done", text: fullText || "Cancelled." };
@@ -144,6 +191,9 @@ export async function* groqStream(
     }
     yield { type: "done", text: fullText || `Error: ${err.message}` };
     return;
+  } finally {
+    timeout.clear();
+    combined.cleanup();
   }
 
   yield {

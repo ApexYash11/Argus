@@ -38,7 +38,6 @@ export async function* handleChatMessage(
         };
         const stream = await runSupervisor(cwd, trigger, undefined, undefined, signal);
         for await (const event of stream) {
-          if (signal?.aborted) break;
           switch (event.type) {
             case "agent_start":
               yield { type: "agent_thinking", message: event.description };
@@ -107,7 +106,6 @@ export async function* handleChatMessage(
     };
     const stream = await runSupervisor(cwd, trigger, undefined, undefined, signal);
     for await (const event of stream) {
-      if (signal?.aborted) break;
       switch (event.type) {
         case "agent_start":
           yield { type: "agent_thinking", message: event.description };
