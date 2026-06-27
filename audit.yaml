@@ -1,48 +1,9 @@
 # AI Spend Auditor Configuration
-# All options have defaults — this file is auto-created by `audit init`
-
-# Company name used in reports and findings
-company: My Company
-
-# ISO 4217 currency code (default: INR)
+company: "Demo"
 currency: INR
-
-# Minimum runway months before cashflow-risk flags are raised (default: 8)
 minRunwayMonths: 8
-
-# Minimum operating reserve in currency units (default: 0)
 minOperatingReserve: 0
-
-# Maximum investigation iterations per agent (1-10, default: 5)
 maxIterations: 5
-
-# Minimum confidence threshold (0.0-1.0, default: 0.7)
-# Findings below this floor are discarded. Auto-raised by calibration on repeated dismissals.
 confidenceFloor: 0.7
-
-# Scratchpad (JSONL audit trail) settings
 scratchpad:
-  # Number of recent runs to retain (1-365, default: 30)
   retentionCount: 30
-
-# Expense policy rules (all optional)
-policy:
-  # Maximum expense amount allowed without a receipt
-  maxExpenseWithoutReceipt: 500
-  # Per-category spending limits
-  perCategoryLimits:
-    meals: 5000
-    travel: 15000
-    office-supplies: 5000
-    client-entertainment: 20000
-  # Categories that are always prohibited
-  prohibitedCategories:
-    - alcohol
-  # Number of days employees have to submit expense reports
-  submissionWindowDays: 30
-  # Expenses above this threshold require pre-approval
-  preApprovalThreshold: 25000
-  # Per-diem limits by employee role
-  perDiemLimits:
-    executive: 10000
-    staff: 5000

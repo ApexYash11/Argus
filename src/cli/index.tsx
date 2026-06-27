@@ -211,14 +211,17 @@ async function main() {
     }
 
     case "chat": {
-      ensureDb(cwd);
+      if (!ensureDb(cwd)) {
+        await initWorkspace(cwd, flags.company || "My Company");
+        initDb(cwd);
+      }
       await startChat(cwd);
       break;
     }
 
     default: {
-      const auditYaml = path.join(cwd, ".audit", "audit.yaml");
-      if (!fs.existsSync(auditYaml)) {
+      const auditDir = path.join(cwd, ".audit");
+      if (!fs.existsSync(auditDir)) {
         const { default: WelcomeFlow } = await import("./components/WelcomeFlow.js");
         const { waitUntilExit } = render(<WelcomeFlow cwd={cwd} />);
         await waitUntilExit;
