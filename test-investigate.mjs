@@ -10,7 +10,7 @@ console.log("initWorkspace OK");
 await import("./src/agents/index.ts");
 
 const { investigate } = await import("./src/cli/commands/investigate.ts");
-const stream = await investigate();
+const stream = await investigate(process.cwd());
 let eventCount = 0;
 let hasDone = false;
 for await (const evt of stream) {

@@ -114,7 +114,7 @@ async function main() {
     }
 
     case "findings": {
-      if (!ensureDb(cwd)) { console.log("No workspace found. Run `audit init` first."); break; }
+      if (!ensureDb(cwd)) { console.log("No workspace found. Run `argus init` first."); break; }
       const findings = await listFindings({
         status: flags.status,
         severity: flags.severity,
@@ -134,7 +134,7 @@ async function main() {
     }
 
     case "explain": {
-      if (!ensureDb(cwd)) { console.log("No workspace found. Run `audit init` first."); break; }
+      if (!ensureDb(cwd)) { console.log("No workspace found. Run `argus init` first."); break; }
       const findingId = inputArgs[0];
       if (!findingId) {
         console.error("Error: specify a finding ID");
@@ -159,7 +159,7 @@ async function main() {
     }
 
     case "feedback": {
-      if (!ensureDb(cwd)) { console.log("No workspace found. Run `audit init` first."); break; }
+      if (!ensureDb(cwd)) { console.log("No workspace found. Run `argus init` first."); break; }
       const findingId = inputArgs[0];
       if (!findingId) {
         console.error("Error: specify a finding ID");
@@ -181,7 +181,7 @@ async function main() {
     }
 
     case "status": {
-      if (!ensureDb(cwd)) { console.log("No workspace found. Run `audit init` first."); break; }
+      if (!ensureDb(cwd)) { console.log("No workspace found. Run `argus init` first."); break; }
       const status = await getStatus();
       const { waitUntilExit, unmount } = render(
         <App command="status" props={{
@@ -197,7 +197,7 @@ async function main() {
     }
 
     case "report": {
-      if (!ensureDb(cwd)) { console.log("No workspace found. Run `audit init` first."); break; }
+      if (!ensureDb(cwd)) { console.log("No workspace found. Run `argus init` first."); break; }
       const report = await generateReport(flags.period);
       console.log(`\n  Report \u2014 ${report.period}`);
       console.log(`  ${"\u2500".repeat(40)}`);
@@ -216,15 +216,17 @@ async function main() {
       break;
     }
 
-    default:
-      const auditDir = path.join(cwd, ".audit");
-      if (!fs.existsSync(auditDir)) {
+    default: {
+      const auditYaml = path.join(cwd, ".audit", "audit.yaml");
+      if (!fs.existsSync(auditYaml)) {
         const { default: WelcomeFlow } = await import("./components/WelcomeFlow.js");
         const { waitUntilExit } = render(<WelcomeFlow cwd={cwd} />);
         await waitUntilExit;
       } else {
+        ensureDb(cwd);
         await startChat(cwd);
       }
+    }
   }
 }
 

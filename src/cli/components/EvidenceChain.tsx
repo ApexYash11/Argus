@@ -35,7 +35,7 @@ export default function EvidenceChain({ finding, evidence, trace, showTrace }: P
       <Box>
         <Text bold>{finding.id}</Text>
         <Text> | </Text>
-        <Text color={finding.severity === "critical" ? C.red : finding.severity === "high" ? C.orange : C.yellow}>
+        <Text color={finding.severity === "critical" ? C.red : finding.severity === "high" ? C.orange : finding.severity === "warning" ? C.yellow : C.green}>
           {finding.severity.toUpperCase()}
         </Text>
       </Box>

@@ -2,7 +2,7 @@
 
 Argus includes an interactive chat mode that lets you converse with the autonomous financial investigator in real time.
 
-> **Note:** The compiled binary is named `audit` (see `package.json` `"bin"`), but the project is called Argus. Commands below use `bun run` since no compiled binary exists yet.
+> **Note:** The compiled binary is named `argus` (see `package.json` `"bin"`), but the project is called Argus. Commands below use `bun run` since no compiled binary exists yet.
 
 ---
 

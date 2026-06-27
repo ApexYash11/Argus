@@ -1,8 +1,6 @@
 import React, { useEffect, useState } from "react";
 import { Box, Text, useApp } from "ink";
 import TextInput from "ink-text-input";
-import fs from "fs";
-import path from "path";
 import { BANNER, C, SYM, VERSION } from "../theme.js";
 import { initWorkspace } from "../commands/init.js";
 
@@ -19,9 +17,6 @@ export default function WelcomeFlow({ cwd }: { cwd: string }) {
   const [currencyDone, setCurrencyDone] = useState(false);
 
   useEffect(() => {
-    const auditDir = path.join(cwd, ".audit");
-    fs.mkdirSync(auditDir, { recursive: true });
-    fs.mkdirSync(path.join(auditDir, "scratchpad"), { recursive: true });
     setPhase(2);
     setShowCompanyInput(true);
   }, [cwd]);
@@ -72,12 +67,12 @@ export default function WelcomeFlow({ cwd }: { cwd: string }) {
         <Text color={C.dim}>{SYM.div.repeat(50)}</Text>
       </Box>
 
-      {phase >= 1 && (
-        <>
-          <Box marginTop={1}>
-            <Text color={C.muted}>initializing workspace</Text>
-          </Box>
+      <Box marginTop={1}>
+        <Text color={C.muted}>initializing workspace</Text>
+      </Box>
 
+      {phase >= 3 && (
+        <>
           <Box marginTop={1}>
             <Text>
               <Text color={C.green}>  {SYM.ok}  </Text>

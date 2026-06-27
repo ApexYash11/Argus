@@ -69,7 +69,7 @@ export default function InvestigationStream({ stream, onComplete }: Props) {
       )}
       {done && (
         <Box>
-          <Text color={C.muted}>Run `audit findings` to review.</Text>
+          <Text color={C.muted}>Run `argus findings` to review.</Text>
         </Box>
       )}
     </Box>
