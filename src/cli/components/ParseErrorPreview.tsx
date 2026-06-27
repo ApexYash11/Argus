@@ -1,5 +1,6 @@
 import React from "react";
 import { Text, Box } from "ink";
+import { C } from "../theme.js";
 
 interface ParseError {
   line: number;
@@ -15,9 +16,9 @@ interface Props {
 }
 
 const COLORS: Record<string, string> = {
-  red: "#ef4444",
-  yellow: "#eab308",
-  dim: "#888888",
+  red: C.red,
+  yellow: C.yellow,
+  dim: C.muted,
 };
 
 function distinctRowCount(errors: ParseError[]): number {

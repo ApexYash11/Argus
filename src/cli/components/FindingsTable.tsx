@@ -1,22 +1,23 @@
 import React from "react";
 import { Text, Box } from "ink";
 import type { Finding } from "../../model/types";
+import { C } from "../theme.js";
 
 interface Props {
   findings: Finding[];
 }
 
 const SEVERITY_COLORS: Record<string, string> = {
-  critical: "#ef4444",
-  high: "#f97316",
-  medium: "#eab308",
-  low: "#22c55e",
+  critical: C.red,
+  high: C.orange,
+  medium: C.yellow,
+  low: C.green,
 };
 
 const STATUS_COLORS: Record<string, string> = {
-  open: "#3b82f6",
-  resolved: "#22c55e",
-  dismissed: "#888888",
+  open: C.blue,
+  resolved: C.green,
+  dismissed: C.muted,
 };
 
 export default function FindingsTable({ findings }: Props) {
@@ -24,7 +25,7 @@ export default function FindingsTable({ findings }: Props) {
     return <Text>No findings found.</Text>;
   }
 
-  const headerColor = "#888";
+  const headerColor = C.muted;
   const rows = findings.map((f) => ({
     id: f.id,
     severity: f.severity,
@@ -56,7 +57,7 @@ export default function FindingsTable({ findings }: Props) {
           <Text>{r.title.padEnd(52)}</Text>
           <Text>{r.confidence.padEnd(6)}</Text>
           <Text>{r.impact.padEnd(16)}</Text>
-          <Text color="#888">{r.created.padEnd(12)}</Text>
+          <Text color={C.muted}>{r.created.padEnd(12)}</Text>
         </Box>
       ))}
     </Box>

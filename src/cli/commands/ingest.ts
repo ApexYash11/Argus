@@ -9,6 +9,7 @@ import { getDb } from "../../db/index";
 import { writeScratchpadEntry, initScratchpad } from "../../engine/scratchpad";
 
 export async function ingestFile(
+  cwd: string,
   filePath: string,
   type?: string
 ): Promise<AsyncGenerator<AuditEvent>> {
@@ -17,7 +18,7 @@ export async function ingestFile(
     const ext = path.extname(absPath).toLowerCase();
     const filename = path.basename(absPath);
 
-    initScratchpad(process.cwd());
+    initScratchpad(cwd);
     writeScratchpadEntry({ type: "ingest_start", message: `Ingesting ${filename}` });
 
     yield { type: "step", agent: "ingest", message: `Ingesting ${filename}...` };

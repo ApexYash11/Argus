@@ -10,6 +10,7 @@ export function registerAgent(agentType: AgentType, def: AgentDefinition): void 
 }
 
 export async function runSupervisor(
+  cwd: string,
   trigger: FinancialEvent,
   filterType?: AgentType,
   config?: { maxIterations?: number; confidenceFloor?: number }
@@ -20,7 +21,7 @@ export async function runSupervisor(
 
   async function* gen(): AsyncGenerator<AuditEvent> {
     const startTime = performance.now();
-    initScratchpad(process.cwd());
+    initScratchpad(cwd);
     writeScratchpadEntry({ type: "supervisor_start", message: `Trigger: ${trigger.type}` });
 
     yield {
@@ -72,7 +73,7 @@ export async function runSupervisor(
       }
     }
 
-    pruneScratchpad(process.cwd());
+    pruneScratchpad(cwd);
     yield { type: "done", totalFindings: findingsCount, durationMs: Math.round(performance.now() - startTime) };
   }
 

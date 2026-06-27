@@ -2,6 +2,7 @@ import React, { useEffect, useState } from "react";
 import { Text, Box } from "ink";
 import Spinner from "ink-spinner";
 import type { AuditEvent } from "../../model/types";
+import { C } from "../theme.js";
 
 interface Props {
   stream: AsyncGenerator<AuditEvent>;
@@ -42,13 +43,13 @@ export default function InvestigationStream({ stream, onComplete }: Props) {
       {messages.slice(-30).map((m, i) => (
         <Box key={i}>
           {m.type === "finding" ? (
-            <Text color="#22c55e">{"\u25B6 "}</Text>
+            <Text color={C.green}>{"\u25B6 "}</Text>
           ) : m.type === "step" ? (
-            <Text color="#3b82f6">{"\u25C6 "}</Text>
+            <Text color={C.blue}>{"\u25C6 "}</Text>
           ) : m.type === "evidence" ? (
-            <Text color="#a855f7">{"  \u2192 "}</Text>
+            <Text color={C.purple}>{"  \u2192 "}</Text>
           ) : m.type === "confidence" ? (
-            <Text color="#eab308">{"    "}</Text>
+            <Text color={C.yellow}>{"    "}</Text>
           ) : (
             <Text>{"  "}</Text>
           )}
@@ -68,7 +69,7 @@ export default function InvestigationStream({ stream, onComplete }: Props) {
       )}
       {done && (
         <Box>
-          <Text color="#888">Run `audit findings` to review.</Text>
+          <Text color={C.muted}>Run `argus findings` to review.</Text>
         </Box>
       )}
     </Box>

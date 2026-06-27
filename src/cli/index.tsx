@@ -11,15 +11,16 @@ import { explainFinding } from "./commands/explain";
 import { submitFeedback } from "./commands/feedback";
 import { getStatus } from "./commands/status";
 import { generateReport } from "./commands/report";
+import { startChat } from "./commands/chat";
 import { initDb } from "../db/index";
 import "../agents/index";
 import fs from "fs";
 import path from "path";
 
-function ensureDb() {
-  const dbPath = path.join(process.cwd(), ".audit", "spend-auditor.db");
+function ensureDb(cwd: string) {
+  const dbPath = path.join(cwd, ".audit", "spend-auditor.db");
   if (fs.existsSync(dbPath)) {
-    initDb(process.cwd());
+    initDb(cwd);
     return true;
   }
   return false;
@@ -28,7 +29,7 @@ function ensureDb() {
 const cli = meow(
   `
   Usage
-    $ audit <command> [options]
+    $ argus <command> [options]
 
   Commands
     init                           Initialize workspace
@@ -40,18 +41,21 @@ const cli = meow(
     report [--period]              Generate reports
     status                         System and agent health
     config                         Workspace configuration
+    chat                           Interactive chat mode
 
   Examples
-    $ audit init --company "Acme Corp"
-    $ audit ingest transactions.csv
-    $ audit investigate
-    $ audit findings --status open --severity critical
-    $ audit explain FINDING-003 --trace
-    $ audit feedback FINDING-003 --resolve "Fixed with vendor"
+    $ argus init --company "Acme Corp"
+    $ argus ingest ./your-data.csv
+    $ argus investigate
+    $ argus findings --status open --severity critical
+    $ argus explain FINDING-003 --trace
+    $ argus feedback FINDING-003 --resolve "Fixed with vendor"
+    $ argus chat
 `,
   {
     importMeta: import.meta,
     flags: {
+      dir: { type: "string", shortFlag: "d" },
       company: { type: "string" },
       type: { type: "string" },
       watch: { type: "boolean", default: false },
@@ -76,22 +80,23 @@ process.on("SIGTERM", () => { stopWatcher(); });
 
 const [command, ...inputArgs] = cli.input;
 const flags = cli.flags;
+const cwd = flags.dir ? path.resolve(flags.dir) : process.cwd();
 
 async function main() {
   switch (command) {
     case "init":
-      await initWorkspace(process.cwd(), flags.company);
+      await initWorkspace(cwd, flags.company);
       console.log("Workspace initialized.");
       break;
 
     case "ingest": {
-      ensureDb();
+      ensureDb(cwd);
       const filePath = inputArgs[0];
       if (!filePath) {
         console.error("Error: specify a file path to ingest");
         process.exit(1);
       }
-      const stream = await ingestFile(filePath, flags.type as string | undefined);
+      const stream = await ingestFile(cwd, filePath, flags.type as string | undefined);
       for await (const event of stream) {
         if (event.type === "step") console.log(`  ${event.message}`);
       }
@@ -99,8 +104,8 @@ async function main() {
     }
 
     case "investigate": {
-      ensureDb();
-      const stream = await investigate(flags.type as any, flags.watch);
+      ensureDb(cwd);
+      const stream = await investigate(cwd, flags.type as any, flags.watch);
       const { waitUntilExit, unmount } = render(
         <App command="investigate" props={{ stream, onComplete: () => unmount() }} />
       );
@@ -109,7 +114,7 @@ async function main() {
     }
 
     case "findings": {
-      if (!ensureDb()) { console.log("No workspace found. Run `audit init` first."); break; }
+      if (!ensureDb(cwd)) { console.log("No workspace found. Run `argus init` first."); break; }
       const findings = await listFindings({
         status: flags.status,
         severity: flags.severity,
@@ -129,7 +134,7 @@ async function main() {
     }
 
     case "explain": {
-      if (!ensureDb()) { console.log("No workspace found. Run `audit init` first."); break; }
+      if (!ensureDb(cwd)) { console.log("No workspace found. Run `argus init` first."); break; }
       const findingId = inputArgs[0];
       if (!findingId) {
         console.error("Error: specify a finding ID");
@@ -154,7 +159,7 @@ async function main() {
     }
 
     case "feedback": {
-      if (!ensureDb()) { console.log("No workspace found. Run `audit init` first."); break; }
+      if (!ensureDb(cwd)) { console.log("No workspace found. Run `argus init` first."); break; }
       const findingId = inputArgs[0];
       if (!findingId) {
         console.error("Error: specify a finding ID");
@@ -176,7 +181,7 @@ async function main() {
     }
 
     case "status": {
-      if (!ensureDb()) { console.log("No workspace found. Run `audit init` first."); break; }
+      if (!ensureDb(cwd)) { console.log("No workspace found. Run `argus init` first."); break; }
       const status = await getStatus();
       const { waitUntilExit, unmount } = render(
         <App command="status" props={{
@@ -192,10 +197,10 @@ async function main() {
     }
 
     case "report": {
-      if (!ensureDb()) { console.log("No workspace found. Run `audit init` first."); break; }
+      if (!ensureDb(cwd)) { console.log("No workspace found. Run `argus init` first."); break; }
       const report = await generateReport(flags.period);
-      console.log(`\n  Report — ${report.period}`);
-      console.log(`  ${"─".repeat(40)}`);
+      console.log(`\n  Report \u2014 ${report.period}`);
+      console.log(`  ${"\u2500".repeat(40)}`);
       console.log(`  Total findings:  ${report.summary.total}`);
       console.log(`  Open:            ${report.summary.open}`);
       console.log(`  Critical:        ${report.summary.critical}`);
@@ -205,8 +210,23 @@ async function main() {
       break;
     }
 
-    default:
-      cli.showHelp();
+    case "chat": {
+      ensureDb(cwd);
+      await startChat(cwd);
+      break;
+    }
+
+    default: {
+      const auditYaml = path.join(cwd, ".audit", "audit.yaml");
+      if (!fs.existsSync(auditYaml)) {
+        const { default: WelcomeFlow } = await import("./components/WelcomeFlow.js");
+        const { waitUntilExit } = render(<WelcomeFlow cwd={cwd} />);
+        await waitUntilExit;
+      } else {
+        ensureDb(cwd);
+        await startChat(cwd);
+      }
+    }
   }
 }
 
