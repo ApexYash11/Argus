@@ -32,32 +32,32 @@ function checkAgentActivation(
 
   switch (agent) {
     case "saas-waste":
-      if (!dataSources.includes("subscriptions")) missingData.push("subscriptions.csv");
+      if (!dataSources.includes("subscriptions")) missingData.push("subscriptions data (CSV)");
       break;
 
     case "duplicate-payments":
-      if (!dataSources.includes("transactions")) missingData.push("transactions.csv");
+      if (!dataSources.includes("transactions")) missingData.push("transactions data (CSV)");
       break;
 
     case "vendor-overbilling":
-      if (!dataSources.includes("transactions")) missingData.push("transactions.csv");
+      if (!dataSources.includes("transactions")) missingData.push("transactions data (CSV)");
       if (!dataSources.includes("contracts") && !dataSources.includes("invoices")) {
-        missingData.push("contracts/ or invoices/");
+        missingData.push("invoice or contract documents (PDF or CSV)");
       }
       break;
 
     case "policy-violations":
-      if (!dataSources.includes("expense-reports")) missingData.push("expense-reports.csv");
+      if (!dataSources.includes("expense-reports")) missingData.push("expense reports data (CSV)");
       break;
 
     case "reconciliation":
-      if (!dataSources.includes("transactions")) missingData.push("transactions.csv");
-      if (!dataSources.includes("invoices")) missingData.push("invoices/");
+      if (!dataSources.includes("transactions")) missingData.push("transactions data (CSV)");
+      if (!dataSources.includes("invoices")) missingData.push("invoices data (PDF or CSV)");
       break;
 
     case "anomaly-detection": {
       if (!dataSources.includes("transactions")) {
-        missingData.push("transactions.csv (3+ months)");
+        missingData.push("transactions data (CSV, 3+ months)");
       } else if (historyDays < 60) {
         return {
           agent,
@@ -71,10 +71,10 @@ function checkAgentActivation(
 
     case "cashflow-risk": {
       if (!dataSources.includes("transactions")) {
-        missingData.push("transactions.csv");
+        missingData.push("transactions data (CSV)");
       }
       if (!dataSources.includes("committed-expenses")) {
-        missingData.push("committed-expenses.csv");
+        missingData.push("committed expenses data (CSV)");
       }
       if (historyDays < 60) {
         return {

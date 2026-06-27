@@ -6,7 +6,7 @@ import path from "path";
 import { BANNER, C, SYM, VERSION } from "../theme.js";
 import { initWorkspace } from "../commands/init.js";
 
-export default function WelcomeFlow() {
+export default function WelcomeFlow({ cwd }: { cwd: string }) {
   const { exit } = useApp();
   const [phase, setPhase] = useState(1);
   const [isComplete, setIsComplete] = useState(false);
@@ -19,12 +19,12 @@ export default function WelcomeFlow() {
   const [currencyDone, setCurrencyDone] = useState(false);
 
   useEffect(() => {
-    const auditDir = path.join(process.cwd(), ".audit");
+    const auditDir = path.join(cwd, ".audit");
     fs.mkdirSync(auditDir, { recursive: true });
     fs.mkdirSync(path.join(auditDir, "scratchpad"), { recursive: true });
     setPhase(2);
     setShowCompanyInput(true);
-  }, []);
+  }, [cwd]);
 
   useEffect(() => {
     if (isComplete) {
@@ -44,7 +44,7 @@ export default function WelcomeFlow() {
     setCurrencyDone(true);
     setShowCurrencyInput(false);
     const name = company || "My Company";
-    await initWorkspace(process.cwd(), name);
+    await initWorkspace(cwd, name);
     setPhase(3);
   };
 
@@ -160,22 +160,24 @@ export default function WelcomeFlow() {
           <Box marginTop={1}>
             <Box flexDirection="column">
               <Text color={C.muted}>  ingest data</Text>
-              <Text color={C.cyan}>    argus ingest transactions.csv</Text>
-              <Text color={C.cyan}>    argus ingest subscriptions.csv</Text>
+              <Text color={C.cyan}>    argus ingest ./your-data/transactions.csv</Text>
+              <Text color={C.cyan}>    argus ingest ./your-data/subscriptions.csv</Text>
+              <Text color={C.cyan}>    argus -d ./your-data ingest .</Text>
             </Box>
           </Box>
 
           <Box marginTop={1}>
             <Box flexDirection="column">
-              <Text color={C.muted}>  run investigation</Text>
+              <Text color={C.muted}>  investigate</Text>
               <Text color={C.cyan}>    argus investigate</Text>
+              <Text color={C.cyan}>    argus -d ./client-a investigate</Text>
             </Box>
           </Box>
 
           <Box marginTop={1}>
             <Box flexDirection="column">
-              <Text color={C.muted}>  or run the demo</Text>
-              <Text color={C.purple}>    bun run demo</Text>
+              <Text color={C.muted}>  chat with argus</Text>
+              <Text color={C.cyan}>    argus chat</Text>
             </Box>
           </Box>
 

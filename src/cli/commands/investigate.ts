@@ -4,10 +4,11 @@ import type { AuditEvent, AgentType, FinancialEvent } from "../../model/types";
 import { runSupervisor } from "../../agents/supervisor";
 
 let watcherStopped = false;
+let workspaceDir = process.cwd();
 
 function writeWatcherStatus(state: string, findingsCount?: number): void {
   try {
-    const dir = path.join(process.cwd(), ".audit");
+    const dir = path.join(workspaceDir, ".audit");
     fs.mkdirSync(dir, { recursive: true });
     fs.writeFileSync(
       path.join(dir, "watcher.json"),
@@ -22,9 +23,11 @@ function writeWatcherStatus(state: string, findingsCount?: number): void {
 }
 
 export async function investigate(
+  cwd: string,
   type?: AgentType,
   watch?: boolean
 ): Promise<AsyncGenerator<AuditEvent>> {
+  workspaceDir = cwd;
   async function* gen(): AsyncGenerator<AuditEvent> {
     const trigger: FinancialEvent = {
       type: "daily_tick",
@@ -34,7 +37,7 @@ export async function investigate(
     const runCycle = async function* (): AsyncGenerator<AuditEvent> {
       writeWatcherStatus("running");
       let cycleFindings = 0;
-      const stream = await runSupervisor(trigger, type);
+      const stream = await runSupervisor(cwd, trigger, type);
       for await (const event of stream) {
         yield event;
         if (event.type === "finding") cycleFindings++;
