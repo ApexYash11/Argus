@@ -13,7 +13,8 @@ export async function runSupervisor(
   cwd: string,
   trigger: FinancialEvent,
   filterType?: AgentType,
-  config?: { maxIterations?: number; confidenceFloor?: number }
+  config?: { maxIterations?: number; confidenceFloor?: number },
+  signal?: AbortSignal
 ): Promise<AsyncGenerator<AuditEvent>> {
   const agents: AgentType[] = filterType
     ? [filterType]
@@ -32,6 +33,11 @@ export async function runSupervisor(
 
     let findingsCount = 0;
     for (const agentType of agents) {
+      if (signal?.aborted) {
+        yield { type: "step", agent: "supervisor", message: "Investigation cancelled by user." };
+        break;
+      }
+
       const def = agentImpls[agentType];
       if (!def) {
         yield { type: "step", agent: "supervisor", message: `No implementation for ${agentType}, skipping` };
@@ -49,7 +55,7 @@ export async function runSupervisor(
         const state = await runInvestigation(trigger, agentType, def, (event) => {
           writeScratchpadEntry({ type: "agent_event", agent: agentType, message: JSON.stringify(event) });
           eventsBuffer.push(event);
-        }, config);
+        }, config, signal);
 
         let hadFinding = false;
         for (const event of eventsBuffer) {

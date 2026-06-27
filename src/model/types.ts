@@ -132,6 +132,19 @@ export interface Comparison {
   delta?: string;
 }
 
+export type ChatEvent =
+  | { type: "user_message"; text: string }
+  | { type: "agent_thinking"; message: string }
+  | { type: "tool_start"; tool: string; args: string; toolCallId: string }
+  | { type: "tool_end"; tool: string; summary: string; durationMs: number; toolCallId: string }
+  | { type: "tool_error"; tool: string; error: string; toolCallId: string }
+  | { type: "llm_chunk"; text: string }
+  | { type: "llm_done"; fullText: string }
+  | { type: "done"; totalFindings?: number; durationMs: number }
+  | { type: "error"; message: string }
+  | { type: "clear" }
+  | { type: "help"; commands: { name: string; description: string }[] };
+
 export interface AppConfig {
   company: string;
   currency: string;

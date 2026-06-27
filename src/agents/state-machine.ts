@@ -14,6 +14,7 @@ export interface AgentContext {
   state: InvestigationState;
   emit: (event: AuditEvent) => void;
   config?: { maxIterations?: number; confidenceFloor?: number };
+  signal?: AbortSignal;
 }
 
 export interface AgentDefinition {
@@ -28,7 +29,8 @@ export async function runInvestigation(
   agentType: AgentType,
   agentDef: AgentDefinition,
   emit: (event: AuditEvent) => void,
-  config?: { maxIterations?: number; confidenceFloor?: number }
+  config?: { maxIterations?: number; confidenceFloor?: number },
+  signal?: AbortSignal
 ): Promise<InvestigationState> {
   const maxIters = config?.maxIterations ?? MAX_ITERATIONS;
   const vendorId = trigger.vendorId;
@@ -52,7 +54,7 @@ export async function runInvestigation(
     if (event.type !== "done") emit(stamped);
   }
 
-  const ctx: AgentContext = { agentType, state, emit: recordEvent, config };
+  const ctx: AgentContext = { agentType, state, emit: recordEvent, config, signal };
 
   if (cal && cal.thresholdOverride) {
     recordEvent({ type: "step", agent: agentType, message: `Calibration loaded — threshold ${(cal.thresholdOverride * 100).toFixed(0)}% (${cal.dismissCount} dismissals)` });
@@ -70,6 +72,7 @@ export async function runInvestigation(
   state.iterations++;
 
   while (state.iterations <= maxIters) {
+    if (signal?.aborted) { recordEvent({ type: "step", agent: agentType, message: "Cancelled by user." }); break; }
     try { await agentDef.retrieve(ctx); } catch (err: any) {
       recordEvent({ type: "step", agent: agentType, message: `Retrieve error: ${err.message}` });
       break;
