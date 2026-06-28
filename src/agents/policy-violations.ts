@@ -1,5 +1,5 @@
 import { registerAgent } from "./supervisor";
-import type { Comparison } from "../model/types";
+import type { Comparison, FinancialRecord } from "../model/types";
 import { getFinancialRecordsByType } from "../db/queries";
 import type { AppConfig } from "../model/types";
 
@@ -23,14 +23,20 @@ function parseExpenseFields(description: string): { category: string; employee: 
 
 registerAgent("policy-violations", {
   async classify(ctx) {
-    ctx.emit({ type: "step", agent: "policy-violations", message: "Checking expense policy compliance..." });
+    const expenses = getFinancialRecordsByType("expense");
+    if (expenses.length === 0) {
+      ctx.emit({ type: "agent_skipped", agent: "policy-violations", reason: "No expenses to check" });
+      ctx.state._skip = true;
+      return;
+    }
+    ctx.emit({ type: "step", agent: "policy-violations", message: `Found ${expenses.length} expenses to audit against policy` });
   },
 
   async retrieve(ctx) {
-    const expenses = getFinancialRecordsByType("expense");
-    const rawRecords = expenses.map((e) => {
-      try { return JSON.parse(e.raw); } catch { return null; }
-    }).filter(Boolean) as Record<string, unknown>[];
+    if (!ctx.state._cache) {
+      ctx.state._cache = { expenses: getFinancialRecordsByType("expense") };
+    }
+    const expenses = (ctx.state._cache as unknown as { expenses: FinancialRecord[] }).expenses;
 
     ctx.state.evidence = [
       { key: "expense_count", value: String(expenses.length), sourceDocId: "db" },
@@ -43,7 +49,7 @@ registerAgent("policy-violations", {
 
   async compare(ctx) {
     const comparisons: Comparison[] = [];
-    const expenses = getFinancialRecordsByType("expense");
+    const expenses = ((ctx.state._cache as unknown as { expenses: FinancialRecord[] })?.expenses ?? getFinancialRecordsByType("expense")) as FinancialRecord[];
 
     const config = (ctx as any).config as AppConfig | undefined;
     const policy = config?.policy;
@@ -115,6 +121,15 @@ registerAgent("policy-violations", {
     const overLimitCount = cmpCount - prohibitedCount - receiptMissingCount;
     if (overLimitCount > 0) { score += Math.min(overLimitCount * 0.05, 0.1); reasons.push(`${overLimitCount} over-limit item(s)`); }
     if (cmpCount === 0) { score = 0; reasons.push("no violations found"); }
+
+    const allCached = Object.values(ctx.state._cache ?? {}).flat() as any[];
+    const qualityFlags = allCached.flatMap(r => { try { return JSON.parse(r.raw)?._quality ?? []; } catch { return []; } });
+    const penalty =
+      (qualityFlags.includes("date_defaulted") ? 0.08 : 0) +
+      (qualityFlags.includes("vendor_fuzzy_matched") ? 0.05 : 0) +
+      (qualityFlags.includes("vendor_new_unverified") ? 0.10 : 0) +
+      (qualityFlags.includes("amount_zero") ? 0.15 : 0);
+    score = Math.max(0, score - penalty);
 
     return {
       score: Math.round(Math.min(score, 0.95) * 100) / 100,

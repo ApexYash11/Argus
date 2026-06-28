@@ -1,5 +1,5 @@
 import { registerAgent } from "./supervisor";
-import type { Comparison } from "../model/types";
+import type { Comparison, FinancialRecord } from "../model/types";
 import { getFinancialRecordsByType, getHistoryDays } from "../db/queries";
 
 function zScore(value: number, mean: number, stddev: number): number {
@@ -16,12 +16,24 @@ function isMonthComplete(month: string): boolean {
 
 registerAgent("anomaly-detection", {
   async classify(ctx) {
-    ctx.emit({ type: "step", agent: "anomaly-detection", message: "Analyzing spend patterns for anomalies..." });
+    const payments = getFinancialRecordsByType("payment").filter((r) => r.amount > 0);
+    const historyDays = getHistoryDays();
+    if (payments.length === 0 || historyDays < 60) {
+      ctx.emit({ type: "agent_skipped", agent: "anomaly-detection", reason: payments.length === 0 ? "No payments to analyze" : `Insufficient history: ${Math.round(historyDays)} days (need 60+)` });
+      ctx.state._skip = true;
+      return;
+    }
+    ctx.emit({ type: "step", agent: "anomaly-detection", message: `Found ${payments.length} payments across ${Math.round(historyDays)} days of history` });
   },
 
   async retrieve(ctx) {
-    const payments = getFinancialRecordsByType("payment").filter((r) => r.amount > 0);
-    const historyDays = getHistoryDays();
+    if (!ctx.state._cache) {
+      ctx.state._cache = {
+        payments: getFinancialRecordsByType("payment").filter((r) => r.amount > 0),
+        historyDays: getHistoryDays(),
+      };
+    }
+    const { payments, historyDays } = ctx.state._cache as unknown as { payments: FinancialRecord[]; historyDays: number };
 
     ctx.state.evidence = [
       { key: "payment_count", value: String(payments.length), sourceDocId: "db" },
@@ -35,13 +47,13 @@ registerAgent("anomaly-detection", {
 
   async compare(ctx) {
     const comparisons: Comparison[] = [];
-    const historyDays = getHistoryDays();
+    const cache = (ctx.state._cache ?? { payments: getFinancialRecordsByType("payment").filter((r) => r.amount > 0), historyDays: getHistoryDays() }) as unknown as { payments: FinancialRecord[]; historyDays: number };
+    const historyDays = cache.historyDays;
     if (historyDays < 60) {
       ctx.emit({ type: "agent_skipped", agent: "anomaly-detection", reason: `Insufficient history: ${Math.round(historyDays)} days (need 60+)` });
       return [];
     }
-
-    const payments = getFinancialRecordsByType("payment").filter((r) => r.amount > 0);
+    const payments = cache.payments;
 
     const byMonth = new Map<string, number[]>();
     for (const p of payments) {
@@ -128,6 +140,15 @@ registerAgent("anomaly-detection", {
       score = 0.3;
       reasons.push("no anomalies detected");
     }
+
+    const allCached = Object.values(ctx.state._cache ?? {}).flat() as any[];
+    const qualityFlags = allCached.flatMap(r => { try { return JSON.parse(r.raw)?._quality ?? []; } catch { return []; } });
+    const penalty =
+      (qualityFlags.includes("date_defaulted") ? 0.08 : 0) +
+      (qualityFlags.includes("vendor_fuzzy_matched") ? 0.05 : 0) +
+      (qualityFlags.includes("vendor_new_unverified") ? 0.10 : 0) +
+      (qualityFlags.includes("amount_zero") ? 0.15 : 0);
+    score = Math.max(0, score - penalty);
 
     return {
       score: Math.round(Math.min(score, 0.95) * 100) / 100,

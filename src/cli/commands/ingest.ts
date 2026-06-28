@@ -2,6 +2,7 @@ import path from "path";
 import crypto from "crypto";
 import type { AuditEvent } from "../../model/types";
 import { parseCsvFile } from "../../ingest/csv-parser";
+import { parseXlsxFile } from "../../ingest/xlsx-parser";
 import { normalizeRecord, normalizeUsageRecord } from "../../ingest/normalizer";
 import { extractPdf, extractInvoiceFields } from "../../ingest/pdf-extractor";
 import { insertFinancialRecord, insertUsageRecord } from "../../db/queries";
@@ -23,8 +24,8 @@ export async function ingestFile(
 
     yield { type: "step", agent: "ingest", message: `Ingesting ${filename}...` };
 
-    if (ext === ".csv") {
-      const result = parseCsvFile(absPath, type);
+    if (ext === ".csv" || ext === ".xlsx") {
+      const result = ext === ".xlsx" ? parseXlsxFile(absPath) : parseCsvFile(absPath, type);
 
       for (const err of result.errors) {
         writeScratchpadEntry({ type: "parse_error", message: `Line ${err.line}: ${err.message}` });
@@ -44,45 +45,68 @@ export async function ingestFile(
       }
 
       let ingestedCount = 0;
+
+      // Dedup: remove exact duplicate rows
+      const before = result.records.length;
+      const seen = new Set<string>();
+      result.records = result.records.filter((row) => {
+        const key = JSON.stringify(row);
+        if (seen.has(key)) return false;
+        seen.add(key);
+        return true;
+      });
+      const dupes = before - result.records.length;
+      if (dupes > 0) {
+        yield { type: "step", agent: "ingest", message: `Removed ${dupes} duplicate rows before ingest` };
+      }
+
       for (const raw of result.records) {
-        const usageRecord = normalizeUsageRecord(raw);
-        if (usageRecord) {
-          const id = `USAGE-${Date.now().toString(36).toUpperCase()}${crypto.randomBytes(3).toString("hex").toUpperCase()}`;
-          insertUsageRecord({
-            id,
-            employeeEmail: usageRecord.employeeEmail,
-            tool: usageRecord.tool,
-            lastLogin: usageRecord.lastLogin,
-            vendorId: usageRecord.vendorId,
-            ingestedAt: new Date().toISOString(),
-          });
+        try {
+          const usageRecord = normalizeUsageRecord(raw);
+          if (usageRecord) {
+            const id = `USAGE-${Date.now().toString(36).toUpperCase()}${crypto.randomBytes(3).toString("hex").toUpperCase()}`;
+            insertUsageRecord({
+              id,
+              employeeEmail: usageRecord.employeeEmail,
+              tool: usageRecord.tool,
+              lastLogin: usageRecord.lastLogin,
+              vendorId: usageRecord.vendorId,
+              ingestedAt: new Date().toISOString(),
+            });
+            yield {
+              type: "evidence_found",
+              key: id,
+              value: `Usage: ${usageRecord.employeeEmail} → ${usageRecord.tool} (last: ${usageRecord.lastLogin})`,
+              sourceDocId: id,
+            };
+            ingestedCount++;
+            writeScratchpadEntry({ type: "record_ingested", message: `Usage: ${usageRecord.employeeEmail} → ${usageRecord.tool}` });
+            continue;
+          }
+
+          const { record, vendorResolution } = normalizeRecord(raw);
+
           yield {
             type: "evidence_found",
-            key: id,
-            value: `Usage: ${usageRecord.employeeEmail} → ${usageRecord.tool} (last: ${usageRecord.lastLogin})`,
-            sourceDocId: id,
+            key: record.id,
+            value: `${vendorResolution.canonicalName} — ${record.amount} ${record.currency}`,
+            sourceDocId: record.id,
           };
+
+          insertFinancialRecord(record);
           ingestedCount++;
-          writeScratchpadEntry({ type: "record_ingested", message: `Usage: ${usageRecord.employeeEmail} → ${usageRecord.tool}` });
-          continue;
+
+          writeScratchpadEntry({
+            type: "record_ingested",
+            message: `${vendorResolution.canonicalName} | ${record.amount} ${record.currency} | resolved via ${vendorResolution.method}`,
+          });
+        } catch (err) {
+          yield {
+            type: "step",
+            agent: "ingest",
+            message: `Skipped row — ${err instanceof Error ? err.message : String(err)}`,
+          };
         }
-
-        const { record, vendorResolution } = normalizeRecord(raw);
-
-        yield {
-          type: "evidence_found",
-          key: record.id,
-          value: `${vendorResolution.canonicalName} — ${record.amount} ${record.currency}`,
-          sourceDocId: record.id,
-        };
-
-        insertFinancialRecord(record);
-        ingestedCount++;
-
-        writeScratchpadEntry({
-          type: "record_ingested",
-          message: `${vendorResolution.canonicalName} | ${record.amount} ${record.currency} | resolved via ${vendorResolution.method}`,
-        });
       }
 
       yield {
@@ -142,7 +166,7 @@ export async function ingestFile(
       }
 
     } else {
-      yield { type: "step", agent: "ingest", message: `Unsupported file type: ${ext}. Use .csv or .pdf` };
+      yield { type: "step", agent: "ingest", message: `Unsupported file type: ${ext}. Use .csv, .xlsx, or .pdf` };
       yield { type: "done", totalFindings: 0, durationMs: 0 };
       return;
     }

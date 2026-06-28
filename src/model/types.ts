@@ -56,6 +56,7 @@ export interface Finding {
   dismissedCount: number;
   createdAt: string;
   resolvedAt?: string;
+  recommendation?: string;
 }
 
 export interface Feedback {
@@ -109,6 +110,8 @@ export interface InvestigationState {
   finding?: Finding;
   events: AuditEvent[];
   effectiveFloor?: number;
+  _skip?: boolean;
+  _cache?: Record<string, unknown>;
 }
 
 export interface FinancialEvent {

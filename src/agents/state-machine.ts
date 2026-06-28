@@ -70,6 +70,7 @@ export async function runInvestigation(
     return state;
   }
   state.iterations++;
+  if (ctx.state._skip) { recordEvent({ type: "agent_skipped", agent: agentType, reason: "No relevant data found" }); return state; }
 
   while (state.iterations <= maxIters) {
     if (signal?.aborted) { recordEvent({ type: "step", agent: agentType, message: "Cancelled by user." }); break; }

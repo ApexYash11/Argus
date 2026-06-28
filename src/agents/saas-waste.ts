@@ -1,6 +1,12 @@
 import { registerAgent } from "./supervisor";
-import type { Comparison } from "../model/types";
+import type { Comparison, FinancialRecord } from "../model/types";
 import { getFinancialRecordsByType, getAllUsageRecords } from "../db/queries";
+import type { UsageRecord } from "../db/queries";
+
+interface SaasCache {
+  subs: FinancialRecord[];
+  usage: UsageRecord[];
+}
 
 interface ToolUsage {
   tool: string;
@@ -23,12 +29,23 @@ function daysSince(dateStr: string, referenceDate: string): number {
 
 registerAgent("saas-waste", {
   async classify(ctx) {
-    ctx.emit({ type: "step", agent: "saas-waste", message: "Analyzing subscription usage vs. actual activity..." });
+    const subs = getFinancialRecordsByType("subscription");
+    if (subs.length === 0) {
+      ctx.emit({ type: "agent_skipped", agent: "saas-waste", reason: "No subscriptions to check" });
+      ctx.state._skip = true;
+      return;
+    }
+    ctx.emit({ type: "step", agent: "saas-waste", message: `Found ${subs.length} subscriptions to analyze` });
   },
 
   async retrieve(ctx) {
-    const subs = getFinancialRecordsByType("subscription");
-    const usage = getAllUsageRecords();
+    if (!ctx.state._cache) {
+      ctx.state._cache = {
+        subs: getFinancialRecordsByType("subscription"),
+        usage: getAllUsageRecords(),
+      };
+    }
+    const { subs, usage } = ctx.state._cache as unknown as SaasCache;
 
     ctx.state.evidence = [
       { key: "subscription_count", value: String(subs.length), sourceDocId: "db" },
@@ -42,8 +59,7 @@ registerAgent("saas-waste", {
 
   async compare(ctx) {
     const comparisons: Comparison[] = [];
-    const subs = getFinancialRecordsByType("subscription");
-    const usage = getAllUsageRecords();
+    const { subs, usage } = (ctx.state._cache ?? { subs: getFinancialRecordsByType("subscription"), usage: getAllUsageRecords() }) as unknown as SaasCache;
 
     const usageByVendor = new Map<string, ToolUsage>();
     for (const u of usage) {
@@ -116,6 +132,15 @@ registerAgent("saas-waste", {
     if (zombieCount > 0) { score += 0.15; reasons.push(`${zombieCount} zombie tool(s)`); }
     if (seatWasteCount > 0) { score += Math.min(seatWasteCount * 0.08, 0.15); reasons.push(`${seatWasteCount} seat waste signal(s)`); }
     if (cmpCount === 0) { score = 0; reasons.push("no comparisons found"); }
+
+    const allCached = Object.values(ctx.state._cache ?? {}).flat() as any[];
+    const qualityFlags = allCached.flatMap(r => { try { return JSON.parse(r.raw)?._quality ?? []; } catch { return []; } });
+    const penalty =
+      (qualityFlags.includes("date_defaulted") ? 0.08 : 0) +
+      (qualityFlags.includes("vendor_fuzzy_matched") ? 0.05 : 0) +
+      (qualityFlags.includes("vendor_new_unverified") ? 0.10 : 0) +
+      (qualityFlags.includes("amount_zero") ? 0.15 : 0);
+    score = Math.max(0, score - penalty);
 
     return {
       score: Math.round(Math.min(score, 0.95) * 100) / 100,

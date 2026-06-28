@@ -1,5 +1,5 @@
 import { registerAgent } from "./supervisor";
-import type { Comparison, FinancialRecord } from "../model/types";
+import type { Comparison, FinancialRecord, ContractTerms } from "../model/types";
 import { getFinancialRecordsByType, getAllContractTerms } from "../db/queries";
 
 function invoicePeriod(dateOrPeriod: string, frequency: string): string {
@@ -14,12 +14,23 @@ function invoicePeriod(dateOrPeriod: string, frequency: string): string {
 
 registerAgent("vendor-overbilling", {
   async classify(ctx) {
-    ctx.emit({ type: "step", agent: "vendor-overbilling", message: "Comparing invoices against contracted terms..." });
+    const invoices = getFinancialRecordsByType("invoice");
+    if (invoices.length === 0) {
+      ctx.emit({ type: "agent_skipped", agent: "vendor-overbilling", reason: "No invoices to check" });
+      ctx.state._skip = true;
+      return;
+    }
+    ctx.emit({ type: "step", agent: "vendor-overbilling", message: `Found ${invoices.length} invoices to compare against contracts` });
   },
 
   async retrieve(ctx) {
-    const invoices = getFinancialRecordsByType("invoice");
-    const contracts = getAllContractTerms();
+    if (!ctx.state._cache) {
+      ctx.state._cache = {
+        invoices: getFinancialRecordsByType("invoice"),
+        contracts: getAllContractTerms(),
+      };
+    }
+    const { invoices, contracts } = ctx.state._cache as unknown as { invoices: FinancialRecord[]; contracts: ContractTerms[] };
 
     ctx.state.evidence = [
       { key: "invoice_count", value: String(invoices.length), sourceDocId: "db" },
@@ -33,8 +44,7 @@ registerAgent("vendor-overbilling", {
 
   async compare(ctx) {
     const comparisons: Comparison[] = [];
-    const invoices = getFinancialRecordsByType("invoice");
-    const contracts = getAllContractTerms();
+    const { invoices, contracts } = (ctx.state._cache ?? { invoices: getFinancialRecordsByType("invoice"), contracts: getAllContractTerms() }) as unknown as { invoices: FinancialRecord[]; contracts: ContractTerms[] };
     const contractsByVendor = new Map(contracts.map((c) => [c.vendorId.toLowerCase(), c]));
 
     const invoicesByVendor = new Map<string, FinancialRecord[]>();
@@ -112,6 +122,15 @@ registerAgent("vendor-overbilling", {
     const noContractCount = freshCount - overbilledCount - escalationCount;
     if (noContractCount > 0) { score += 0.05; reasons.push(`${noContractCount} vendor(s) without contract`); }
     if (freshCount === 0) { score = 0; reasons.push("no vendors flagged"); }
+
+    const allCached = Object.values(ctx.state._cache ?? {}).flat() as any[];
+    const qualityFlags = allCached.flatMap(r => { try { return JSON.parse(r.raw)?._quality ?? []; } catch { return []; } });
+    const penalty =
+      (qualityFlags.includes("date_defaulted") ? 0.08 : 0) +
+      (qualityFlags.includes("vendor_fuzzy_matched") ? 0.05 : 0) +
+      (qualityFlags.includes("vendor_new_unverified") ? 0.10 : 0) +
+      (qualityFlags.includes("amount_zero") ? 0.15 : 0);
+    score = Math.max(0, score - penalty);
 
     return {
       score: Math.round(Math.min(score, 0.95) * 100) / 100,

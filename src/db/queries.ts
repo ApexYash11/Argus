@@ -190,6 +190,11 @@ export function updateFindingStatus(id: string, status: string, reason?: string)
   );
 }
 
+export function updateFindingRecommendation(id: string, recommendation: string): void {
+  const db = getDb();
+  db.run("UPDATE findings SET recommendation = $rec WHERE id = $id", { $id: id, $rec: recommendation });
+}
+
 export function incrementDismissCount(id: string): void {
   const db = getDb();
   db.run("UPDATE findings SET dismissed_count = dismissed_count + 1 WHERE id = $id", { $id: id });

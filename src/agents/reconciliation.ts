@@ -16,12 +16,24 @@ function getAgingBucket(days: number): string {
 
 registerAgent("reconciliation", {
   async classify(ctx) {
-    ctx.emit({ type: "step", agent: "reconciliation", message: "Matching invoices to payments..." });
+    const invoices = getFinancialRecordsByType("invoice");
+    const payments = getFinancialRecordsByType("payment").filter((r) => r.amount > 0);
+    if (invoices.length === 0 && payments.length === 0) {
+      ctx.emit({ type: "agent_skipped", agent: "reconciliation", reason: "No invoices or payments to reconcile" });
+      ctx.state._skip = true;
+      return;
+    }
+    ctx.emit({ type: "step", agent: "reconciliation", message: `Reconciling ${invoices.length} invoices with ${payments.length} payments` });
   },
 
   async retrieve(ctx) {
-    const invoices = getFinancialRecordsByType("invoice");
-    const payments = getFinancialRecordsByType("payment").filter((r) => r.amount > 0);
+    if (!ctx.state._cache) {
+      ctx.state._cache = {
+        invoices: getFinancialRecordsByType("invoice"),
+        payments: getFinancialRecordsByType("payment").filter((r) => r.amount > 0),
+      };
+    }
+    const { invoices, payments } = ctx.state._cache as unknown as { invoices: FinancialRecord[]; payments: FinancialRecord[] };
 
     ctx.state.evidence = [
       { key: "invoice_count", value: String(invoices.length), sourceDocId: "db" },
@@ -35,8 +47,7 @@ registerAgent("reconciliation", {
 
   async compare(ctx) {
     const comparisons: Comparison[] = [];
-    const invoices = getFinancialRecordsByType("invoice");
-    const payments = getFinancialRecordsByType("payment").filter((r) => r.amount > 0);
+    const { invoices, payments } = (ctx.state._cache ?? { invoices: getFinancialRecordsByType("invoice"), payments: getFinancialRecordsByType("payment").filter((r) => r.amount > 0) }) as unknown as { invoices: FinancialRecord[]; payments: FinancialRecord[] };
 
     const dates = [...invoices.map((i) => i.date), ...payments.map((p) => p.date)].filter(Boolean);
     const referenceDate = dates.length > 0 ? dates[0]! : new Date().toISOString().slice(0, 10);
@@ -136,6 +147,15 @@ registerAgent("reconciliation", {
     if (warningCount > 0) { score += 0.1; reasons.push(`${warningCount} warning aging item(s)`); }
     if (cmpCount > 0 && criticalCount === 0 && warningCount === 0) { score += 0.1; reasons.push(`${cmpCount} reconciliation gap(s)`); }
     if (cmpCount === 0) { score = 0; reasons.push("fully reconciled"); }
+
+    const allCached = Object.values(ctx.state._cache ?? {}).flat() as any[];
+    const qualityFlags = allCached.flatMap(r => { try { return JSON.parse(r.raw)?._quality ?? []; } catch { return []; } });
+    const penalty =
+      (qualityFlags.includes("date_defaulted") ? 0.08 : 0) +
+      (qualityFlags.includes("vendor_fuzzy_matched") ? 0.05 : 0) +
+      (qualityFlags.includes("vendor_new_unverified") ? 0.10 : 0) +
+      (qualityFlags.includes("amount_zero") ? 0.15 : 0);
+    score = Math.max(0, score - penalty);
 
     return {
       score: Math.round(Math.min(score, 0.95) * 100) / 100,
