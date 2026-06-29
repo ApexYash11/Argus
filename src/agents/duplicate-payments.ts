@@ -1,9 +1,10 @@
 import { registerAgent } from "./supervisor";
 import type { FinancialRecord, Comparison } from "../model/types";
-import { getFinancialRecordsByType } from "../db/queries";
+import { getFinancialRecordsByType, getAllFinancialRecords } from "../db/queries";
+import { extractQualityFlags, computeQualityPenalty } from "./nodes/score-confidence";
 
 export interface DuplicateCache {
-  payments: FinancialRecord[];
+  records: FinancialRecord[];
 }
 
 function daysBetween(a: string, b: string): number {
@@ -32,25 +33,24 @@ interface DuplicateCandidate {
 
 registerAgent("duplicate-payments", {
   async classify(ctx) {
-    const payments = getFinancialRecordsByType("payment").filter((r) => r.amount > 0);
-    if (payments.length === 0) {
-      ctx.emit({ type: "agent_skipped", agent: "duplicate-payments", reason: "No payments to check" });
+    const records = getAllFinancialRecords().filter((r) => r.amount > 0);
+    if (records.length < 2) {
+      ctx.emit({ type: "agent_skipped", agent: "duplicate-payments", reason: `Need at least 2 records with amount > 0 (found ${records.length})` });
       ctx.state._skip = true;
       return;
     }
-    ctx.emit({ type: "step", agent: "duplicate-payments", message: `Found ${payments.length} payments to check for duplicates` });
+    ctx.emit({ type: "step", agent: "duplicate-payments", message: `Found ${records.length} records to check for duplicates` });
   },
 
   async retrieve(ctx) {
     if (!ctx.state._cache) {
-      ctx.state._cache = { payments: getFinancialRecordsByType("payment").filter((r) => r.amount > 0) };
+      ctx.state._cache = { records: getAllFinancialRecords().filter((r) => r.amount > 0) } as any;
     }
-    const payments = ctx.state._cache.payments as FinancialRecord[];
-
+    const cache = ctx.state._cache as any;
+    const records: FinancialRecord[] = cache.records ?? [];
     ctx.state.evidence = [
-      { key: "payment_count", value: String(payments.length), sourceDocId: "db" },
+      { key: "record_count", value: String(records.length), sourceDocId: "db" },
     ];
-
     for (const e of ctx.state.evidence) {
       ctx.emit({ type: "evidence_found", key: e.key, value: e.value, sourceDocId: e.sourceDocId });
     }
@@ -58,10 +58,11 @@ registerAgent("duplicate-payments", {
 
   async compare(ctx) {
     const comparisons: Comparison[] = [];
-    const payments = (ctx.state._cache?.payments ?? getFinancialRecordsByType("payment").filter((r) => r.amount > 0)) as FinancialRecord[];
+    const cache = ctx.state._cache as any;
+    const records: FinancialRecord[] = (cache?.records ?? getAllFinancialRecords().filter((r) => r.amount > 0)) as FinancialRecord[];
 
     const byVendor = new Map<string, FinancialRecord[]>();
-    for (const p of payments) {
+    for (const p of records) {
       const list = byVendor.get(p.vendorId) ?? [];
       list.push(p);
       byVendor.set(p.vendorId, list);
@@ -76,14 +77,10 @@ registerAgent("duplicate-payments", {
           const b = group[j]!;
 
           const amountScore = a.amount === b.amount ? 1 : (1 - Math.abs(a.amount - b.amount) / Math.max(a.amount, b.amount, 1));
-
           const gap = daysBetween(a.date, b.date);
           const dateScore = gap <= 3 ? 1 : gap <= 15 ? 0.7 : gap <= 45 ? 0.3 : 0;
-
           const refScore = referenceSimilarity(a.description, b.description);
-
           const periodScore = (a.periodStart === b.periodStart || a.periodEnd === b.periodEnd) ? 1 : 0.2;
-
           const statusScore = (a.status === "cleared" && b.status === "cleared") ? 1 : 0.75;
 
           const weightedScore =
@@ -128,12 +125,8 @@ registerAgent("duplicate-payments", {
     if (highScoreDups > 0) score += Math.min(highScoreDups * 0.05, 0.1);
 
     const allCached = Object.values(ctx.state._cache ?? {}).flat() as any[];
-    const qualityFlags = allCached.flatMap(r => { try { return JSON.parse(r.raw)?._quality ?? []; } catch { return []; } });
-    const penalty =
-      (qualityFlags.includes("date_defaulted") ? 0.08 : 0) +
-      (qualityFlags.includes("vendor_fuzzy_matched") ? 0.05 : 0) +
-      (qualityFlags.includes("vendor_new_unverified") ? 0.10 : 0) +
-      (qualityFlags.includes("amount_zero") ? 0.15 : 0);
+    const qualityFlags = extractQualityFlags(allCached);
+    const penalty = computeQualityPenalty(qualityFlags);
     score = Math.max(0, score - penalty);
 
     return {

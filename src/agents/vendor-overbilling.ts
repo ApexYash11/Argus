@@ -1,6 +1,7 @@
 import { registerAgent } from "./supervisor";
 import type { Comparison, FinancialRecord, ContractTerms } from "../model/types";
 import { getFinancialRecordsByType, getAllContractTerms } from "../db/queries";
+import { extractQualityFlags, computeQualityPenalty } from "./nodes/score-confidence";
 
 function invoicePeriod(dateOrPeriod: string, frequency: string): string {
   if (frequency === "monthly") return dateOrPeriod.slice(0, 7);
@@ -124,12 +125,8 @@ registerAgent("vendor-overbilling", {
     if (freshCount === 0) { score = 0; reasons.push("no vendors flagged"); }
 
     const allCached = Object.values(ctx.state._cache ?? {}).flat() as any[];
-    const qualityFlags = allCached.flatMap(r => { try { return JSON.parse(r.raw)?._quality ?? []; } catch { return []; } });
-    const penalty =
-      (qualityFlags.includes("date_defaulted") ? 0.08 : 0) +
-      (qualityFlags.includes("vendor_fuzzy_matched") ? 0.05 : 0) +
-      (qualityFlags.includes("vendor_new_unverified") ? 0.10 : 0) +
-      (qualityFlags.includes("amount_zero") ? 0.15 : 0);
+    const qualityFlags = extractQualityFlags(allCached);
+    const penalty = computeQualityPenalty(qualityFlags);
     score = Math.max(0, score - penalty);
 
     return {

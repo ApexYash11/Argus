@@ -2,6 +2,7 @@ import { registerAgent } from "./supervisor";
 import type { Comparison, FinancialRecord } from "../model/types";
 import { getFinancialRecordsByType } from "../db/queries";
 import type { AppConfig } from "../model/types";
+import { extractQualityFlags, computeQualityPenalty } from "./nodes/score-confidence";
 
 const DEFAULT_PER_DIEM_LIMITS: Record<string, number> = {
   meals: 3000,
@@ -123,12 +124,8 @@ registerAgent("policy-violations", {
     if (cmpCount === 0) { score = 0; reasons.push("no violations found"); }
 
     const allCached = Object.values(ctx.state._cache ?? {}).flat() as any[];
-    const qualityFlags = allCached.flatMap(r => { try { return JSON.parse(r.raw)?._quality ?? []; } catch { return []; } });
-    const penalty =
-      (qualityFlags.includes("date_defaulted") ? 0.08 : 0) +
-      (qualityFlags.includes("vendor_fuzzy_matched") ? 0.05 : 0) +
-      (qualityFlags.includes("vendor_new_unverified") ? 0.10 : 0) +
-      (qualityFlags.includes("amount_zero") ? 0.15 : 0);
+    const qualityFlags = extractQualityFlags(allCached);
+    const penalty = computeQualityPenalty(qualityFlags);
     score = Math.max(0, score - penalty);
 
     return {

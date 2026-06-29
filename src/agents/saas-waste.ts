@@ -2,6 +2,7 @@ import { registerAgent } from "./supervisor";
 import type { Comparison, FinancialRecord } from "../model/types";
 import { getFinancialRecordsByType, getAllUsageRecords } from "../db/queries";
 import type { UsageRecord } from "../db/queries";
+import { extractQualityFlags, computeQualityPenalty } from "./nodes/score-confidence";
 
 interface SaasCache {
   subs: FinancialRecord[];
@@ -134,12 +135,8 @@ registerAgent("saas-waste", {
     if (cmpCount === 0) { score = 0; reasons.push("no comparisons found"); }
 
     const allCached = Object.values(ctx.state._cache ?? {}).flat() as any[];
-    const qualityFlags = allCached.flatMap(r => { try { return JSON.parse(r.raw)?._quality ?? []; } catch { return []; } });
-    const penalty =
-      (qualityFlags.includes("date_defaulted") ? 0.08 : 0) +
-      (qualityFlags.includes("vendor_fuzzy_matched") ? 0.05 : 0) +
-      (qualityFlags.includes("vendor_new_unverified") ? 0.10 : 0) +
-      (qualityFlags.includes("amount_zero") ? 0.15 : 0);
+    const qualityFlags = extractQualityFlags(allCached);
+    const penalty = computeQualityPenalty(qualityFlags);
     score = Math.max(0, score - penalty);
 
     return {

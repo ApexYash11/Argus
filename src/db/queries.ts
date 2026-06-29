@@ -345,6 +345,49 @@ export function getContractTermsByVendor(vendorId: string): ContractTerms | null
   };
 }
 
+export interface CachedSchema {
+  headerFingerprint: string;
+  detectedSchema: string;
+  dataType?: string;
+  confidence?: number;
+  usedCount: number;
+  lastUsed: string;
+}
+
+export function getCachedSchema(headerFingerprint: string): CachedSchema | null {
+  const db = getDb();
+  const row = db.query("SELECT * FROM schema_cache WHERE header_fingerprint = $fingerprint").get({ $fingerprint: headerFingerprint }) as Record<string, unknown> | null;
+  if (!row) return null;
+  return {
+    headerFingerprint: row.header_fingerprint as string,
+    detectedSchema: row.detected_schema as string,
+    dataType: row.data_type as string | undefined,
+    confidence: row.confidence as number | undefined,
+    usedCount: row.used_count as number,
+    lastUsed: row.last_used as string,
+  };
+}
+
+export function setCachedSchema(fingerprint: string, schema: string, dataType?: string, confidence?: number): void {
+  const db = getDb();
+  db.run(
+    `INSERT INTO schema_cache (header_fingerprint, detected_schema, data_type, confidence, used_count, last_used)
+     VALUES ($fingerprint, $schema, $dataType, $confidence, 1, datetime('now'))
+     ON CONFLICT(header_fingerprint) DO UPDATE SET
+       detected_schema = excluded.detected_schema,
+       data_type = excluded.data_type,
+       confidence = excluded.confidence,
+       used_count = used_count + 1,
+       last_used = datetime('now')`,
+    {
+      $fingerprint: fingerprint,
+      $schema: schema,
+      $dataType: dataType ?? null,
+      $confidence: confidence ?? null,
+    }
+  );
+}
+
 export function getRecordCount(): number {
   const db = getDb();
   const row = db.query("SELECT COUNT(*) as count FROM financial_records").get() as { count: number };

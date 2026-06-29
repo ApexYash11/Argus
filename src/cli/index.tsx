@@ -58,6 +58,10 @@ const cli = meow(
       dir: { type: "string", shortFlag: "d" },
       company: { type: "string" },
       type: { type: "string" },
+      schema: { type: "string", shortFlag: "s" },
+      // deprecated: new pipeline is now the default
+      force: { type: "boolean", default: false },
+      dryRun: { type: "boolean", default: false },
       watch: { type: "boolean", default: false },
       status: { type: "string" },
       severity: { type: "string" },
@@ -96,7 +100,12 @@ async function main() {
         console.error("Error: specify a file path to ingest");
         process.exit(1);
       }
-      const stream = await ingestFile(cwd, filePath, flags.type as string | undefined);
+      const stream = await ingestFile(cwd, filePath, {
+        type: (flags.schema ?? flags.type) as string | undefined,
+        // experimental flag removed; new pipeline is default
+        force: flags.force as boolean,
+        dryRun: flags.dryRun as boolean,
+      });
       for await (const event of stream) {
         if (event.type === "step") console.log(`  ${event.message}`);
       }
