@@ -10,6 +10,14 @@ const SCHEMA_TIMEOUT = 10_000;
 const MAX_RETRIES = 2;
 const RETRY_DELAYS = [1_000, 2_000];
 const COLUMN_MATCH_THRESHOLD = 0.6;
+const CACHE_CONFIDENCE_FLOOR = 0.5;
+
+export let cacheHits = 0;
+export let cacheMisses = 0;
+
+export function getCacheStats(): { hits: number; misses: number } {
+  return { hits: cacheHits, misses: cacheMisses };
+}
 
 const KEYWORD_MAP: { [key: string]: string[] } = {
   vendor_col: ["vendor", "party", "name", "supplier", "payee", "merchant", "department", "dept", "counterparty", "account_name", "costcenter", "costcentre", "cc", "businessunit", "business_unit"],
@@ -182,7 +190,8 @@ export async function detectSchema(
 
   if (!forceRefresh) {
     const cached = getCachedSchema(fingerprint);
-    if (cached) {
+    if (cached && cached.confidence !== undefined && cached.confidence >= CACHE_CONFIDENCE_FLOOR) {
+      cacheHits++;
       try {
         const parsed = JSON.parse(cached.detectedSchema) as SchemaDetectionResult;
         return { ...parsed, warnings: [...(parsed.warnings ?? []), "Using cached schema"] };
@@ -192,6 +201,7 @@ export async function detectSchema(
     }
   }
 
+  cacheMisses++;
   const result = await tryLLMDetection(headers, sampleRows, columnStats, filePath);
   const validated = validateColumnNames(result, headers);
 
