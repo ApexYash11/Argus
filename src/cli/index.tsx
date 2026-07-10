@@ -12,6 +12,7 @@ import { submitFeedback } from "./commands/feedback";
 import { getStatus } from "./commands/status";
 import { generateReport } from "./commands/report";
 import { startChat } from "./commands/chat";
+import { audit } from "./commands/audit";
 import { initDb } from "../db/index";
 import "../agents/index";
 import fs from "fs";
@@ -36,6 +37,7 @@ const cli = meow(
     ingest <path>                  Ingest financial data
     investigate [--type] [--watch] Run investigation engine
     findings [--status] [--type]   Browse findings
+    audit [path] [--dry-run]       Discover, classify, ingest, and investigate (main verb)
     explain <finding-id>           Deep-dive a finding
     feedback <finding-id>          Submit review action
     report [--period]              Generate reports
@@ -75,6 +77,7 @@ const cli = meow(
       escalate: { type: "string" },
       reason: { type: "string" },
       to: { type: "string" },
+      nonInteractive: { type: "boolean", default: false },
     },
   }
 );
@@ -119,6 +122,22 @@ async function main() {
         <App command="investigate" props={{ stream, onComplete: () => unmount() }} />
       );
       await waitUntilExit;
+      break;
+    }
+
+    case "audit": {
+      const auditPath = inputArgs[0] || cwd;
+      const resolvedAuditPath = path.resolve(auditPath);
+      if (!ensureDb(resolvedAuditPath)) {
+        console.log("Initializing workspace...");
+        await initWorkspace(resolvedAuditPath, flags.company || "My Company");
+        ensureDb(resolvedAuditPath);
+      }
+      const stream = audit(resolvedAuditPath, { dryRun: flags.dryRun, nonInteractive: flags.nonInteractive });
+      for await (const event of stream) {
+        if (event.type === "step") console.log(`  ${event.message}`);
+        if (event.type === "finding") console.log(`  ${event.finding.id} | ${event.finding.title}`);
+      }
       break;
     }
 
