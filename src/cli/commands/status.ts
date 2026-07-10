@@ -1,5 +1,5 @@
 import { getActiveAgents } from "../../engine/activation";
-import { getRecordCount, getRecordCountByType, getAllVendors } from "../../db/queries";
+import { getRecordCount, getRecordCountByType, getAllVendors, getFpRates } from "../../db/queries";
 
 const SOURCE_CONFIG: { name: string; type: string }[] = [
   { name: "subscriptions", type: "subscription" },

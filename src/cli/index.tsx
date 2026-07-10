@@ -41,7 +41,7 @@ const cli = meow(
     explain <finding-id>           Deep-dive a finding
     feedback <finding-id>          Submit review action
     report [--period]              Generate reports
-    status                         System and agent health
+    status [--fp-rate]             System health and agent FP/TP rates
     config                         Workspace configuration
     chat                           Interactive chat mode
 
@@ -78,6 +78,7 @@ const cli = meow(
       reason: { type: "string" },
       to: { type: "string" },
       nonInteractive: { type: "boolean", default: false },
+      fpRate: { type: "boolean", default: false },
     },
   }
 );
@@ -210,6 +211,24 @@ async function main() {
 
     case "status": {
       if (!ensureDb(cwd)) { console.log("No workspace found. Run `argus init` first."); break; }
+      if (flags.fpRate) {
+        const { getFpRates } = await import("../db/queries");
+        const rates = getFpRates();
+        if (rates.length === 0) {
+          console.log("  No findings have been reviewed yet. Submit feedback first.");
+          break;
+        }
+        console.log("  Agent FP/TP Rates (by latest feedback action)");
+        console.log(`  ${"\u2500".repeat(66)}`);
+        console.log(`  ${"agent_type".padEnd(22)} ${"resolved".padStart(9)} ${"dismissed".padStart(9)} ${"escalated".padStart(9)}  ${"fp_rate".padStart(7)} ${"tp_rate".padStart(7)}`);
+        console.log(`  ${"\u2500".repeat(66)}`);
+        for (const r of rates) {
+          const fp = r.fpRate !== null ? r.fpRate.toFixed(2) : "N/A";
+          const tp = r.tpRate !== null ? r.tpRate.toFixed(2) : "N/A";
+          console.log(`  ${r.agentType.padEnd(22)} ${String(r.resolved).padStart(9)} ${String(r.dismissed).padStart(9)} ${String(r.escalated).padStart(9)}  ${fp.padStart(7)} ${tp.padStart(7)}`);
+        }
+        break;
+      }
       const status = await getStatus();
       const { waitUntilExit, unmount } = render(
         <App command="status" props={{

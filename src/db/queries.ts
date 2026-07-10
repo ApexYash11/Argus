@@ -414,6 +414,66 @@ export function getHistoryDays(): number {
   return row.days ?? 0;
 }
 
+export interface AgentFpRate {
+  agentType: string;
+  resolved: number;
+  dismissed: number;
+  escalated: number;
+  total: number;
+  fpRate: number | null;
+  tpRate: number | null;
+}
+
+export function getFpRates(): AgentFpRate[] {
+  const db = getDb();
+  const rows = db.query(`
+    SELECT
+      f.agent_type,
+      fb.latest_action,
+      COUNT(DISTINCT f.id) as cnt
+    FROM findings f
+    JOIN (
+      SELECT
+        fb1.finding_id,
+        fb1.action as latest_action
+      FROM feedback fb1
+      INNER JOIN (
+        SELECT finding_id, MAX(created_at) as max_ts
+        FROM feedback
+        GROUP BY finding_id
+      ) fb2 ON fb1.finding_id = fb2.finding_id AND fb1.created_at = fb2.max_ts
+    ) fb ON f.id = fb.finding_id
+    GROUP BY f.agent_type, fb.latest_action
+    ORDER BY f.agent_type, fb.latest_action
+  `).all() as Array<{ agent_type: string; latest_action: string; cnt: number }>;
+
+  const agentMap = new Map<string, { resolved: number; dismissed: number; escalated: number }>();
+  for (const row of rows) {
+    let entry = agentMap.get(row.agent_type);
+    if (!entry) {
+      entry = { resolved: 0, dismissed: 0, escalated: 0 };
+      agentMap.set(row.agent_type, entry);
+    }
+    if (row.latest_action === "resolve") entry.resolved += row.cnt;
+    else if (row.latest_action === "dismiss") entry.dismissed += row.cnt;
+    else if (row.latest_action === "escalate") entry.escalated += row.cnt;
+  }
+
+  const result: AgentFpRate[] = [];
+  for (const [agentType, counts] of agentMap) {
+    const total = counts.resolved + counts.dismissed + counts.escalated;
+    result.push({
+      agentType,
+      ...counts,
+      total,
+      fpRate: total > 0 ? counts.dismissed / total : null,
+      tpRate: total > 0 ? (counts.resolved + counts.escalated) / total : null,
+    });
+  }
+
+  return result.sort((a, b) => a.agentType.localeCompare(b.agentType));
+}
+
 function rowToFinding(row: Record<string, unknown>): Finding {
   return {
     id: row.id as string,
