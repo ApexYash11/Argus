@@ -74,9 +74,7 @@ D:\Argus\
 │   ├── engine/
 │   │   ├── events.ts            AuditEvent type definitions
 │   │   ├── scratchpad.ts        JSONL logging + retention pruning
-│   │   ├── risk-scorer.ts       3-factor risk scoring
 │   │   ├── finding-builder.ts   Structured finding generation + fingerprint hashing
-│   │   ├── baseline.ts          Rolling averages for anomaly detection
 │   │   └── activation.ts        Data-driven agent unlock + history-gating (60-day min)
 │   │
 │   ├── ingest/
