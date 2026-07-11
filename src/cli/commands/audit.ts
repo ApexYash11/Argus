@@ -7,6 +7,7 @@ import { detectSchema } from "../../ingest/schema-detector";
 import { ingestFile } from "./ingest";
 import { investigate } from "./investigate";
 import { initScratchpad, pruneScratchpad } from "../../engine/scratchpad";
+import { getCacheStats } from "../../ingest/schema-detector";
 
 const SUPPORTED_EXTS = new Set([".csv", ".xlsx", ".pdf"]);
 
@@ -34,7 +35,7 @@ interface FileClassification {
   schema: SchemaDetectionResult;
 }
 
-async function classifyFile(filePath: string): Promise<FileClassification> {
+async function classifyFile(filePath: string, forceRefresh?: boolean): Promise<FileClassification> {
   const ext = path.extname(filePath).toLowerCase();
   if (ext === ".pdf") {
     return {
@@ -76,7 +77,7 @@ async function classifyFile(filePath: string): Promise<FileClassification> {
   }
 
   const { sampledRows, columnStats } = sampleRows(inspection.headers, inspection.allRows, inspection.totalDataRows);
-  const schema = await detectSchema(inspection.headers, sampledRows, columnStats, filePath);
+  const schema = await detectSchema(inspection.headers, sampledRows, columnStats, filePath, forceRefresh);
 
   return {
     filePath,
@@ -89,13 +90,14 @@ async function classifyFile(filePath: string): Promise<FileClassification> {
 
 export async function* audit(
   auditPath: string,
-  options: { dryRun?: boolean; nonInteractive?: boolean } = {}
+  options: { dryRun?: boolean; nonInteractive?: boolean; forceRefresh?: boolean } = {}
 ): AsyncGenerator<AuditEvent> {
   const resolvedPath = path.resolve(auditPath);
   const isDir = fs.statSync(resolvedPath).isDirectory();
   const searchPath = isDir ? resolvedPath : path.dirname(resolvedPath);
   const singleFile = isDir ? null : resolvedPath;
 
+  const auditStartTime = performance.now();
   initScratchpad(resolvedPath);
 
   yield { type: "step", agent: "audit", message: `Scanning ${searchPath} for financial data files...` };
@@ -113,7 +115,7 @@ export async function* audit(
   for (const fp of candidates) {
     yield { type: "step", agent: "audit", message: `Classifying ${path.basename(fp)}...` };
     try {
-      const result = await classifyFile(fp);
+      const result = await classifyFile(fp, options.forceRefresh);
       classified.push(result);
       yield {
         type: "step", agent: "audit",
@@ -140,25 +142,31 @@ export async function* audit(
     return;
   }
 
+  const knownFiles = classified.filter((c) => c.dataType !== "unknown");
   const unknownFiles = classified.filter((c) => c.dataType === "unknown");
   if (unknownFiles.length > 0) {
-    yield { type: "step", agent: "audit", message: `${unknownFiles.length} file(s) could not be classified (type=unknown).` };
+    yield { type: "step", agent: "audit", message: `${unknownFiles.length} unclassified file(s) skipped:` };
     for (const uf of unknownFiles) {
-      yield { type: "step", agent: "audit", message: `  ${path.basename(uf.filePath)}` };
-    }
-    if (options.nonInteractive) {
-      yield { type: "step", agent: "audit", message: "Ambiguous classification — aborting (non-interactive mode)." };
-      return;
+      yield { type: "step", agent: "audit", message: `  ${path.basename(uf.filePath)} — type unknown, confidence ${(uf.confidence * 100).toFixed(0)}%` };
     }
   }
 
   let ingestCount = 0;
-  for (const c of classified) {
+  const qualityFlagTotals = new Map<string, number>();
+  for (const c of knownFiles) {
     yield { type: "step", agent: "audit", message: `Ingesting ${path.basename(c.filePath)}...` };
     try {
       const ingestStream = await ingestFile(resolvedPath, c.filePath);
       for await (const event of ingestStream) {
         if (event.type === "step") {
+          if (event.message.startsWith("Quality flags:")) {
+            for (const part of event.message.replace("Quality flags: ", "").split(", ")) {
+              const [flag, countStr] = part.split(":");
+              if (flag && countStr) {
+                qualityFlagTotals.set(flag, (qualityFlagTotals.get(flag) ?? 0) + parseInt(countStr, 10));
+              }
+            }
+          }
           yield { type: "step", agent: "audit", message: `  ${event.message}` };
         }
       }
@@ -196,5 +204,17 @@ export async function* audit(
   yield { type: "step", agent: "audit", message: `Files classified:  ${classified.length}` };
   yield { type: "step", agent: "audit", message: `Files ingested:    ${ingestCount}` };
   yield { type: "step", agent: "audit", message: `Findings:          ${totalFindings}` };
-  yield { type: "done", totalFindings, durationMs: 0 };
+  if (qualityFlagTotals.size > 0) {
+    const qualitySummary = [...qualityFlagTotals.entries()]
+      .sort((a, b) => b[1] - a[1])
+      .map(([f, c]) => `${f}:${c}`)
+      .join(", ");
+    yield { type: "step", agent: "audit", message: `Quality flags:     ${qualitySummary}` };
+  }
+  const elapsedMs = Math.round(performance.now() - auditStartTime);
+  const elapsed = elapsedMs >= 60000 ? `${(elapsedMs / 60000).toFixed(1)} min` : `${elapsedMs} ms`;
+  yield { type: "step", agent: "audit", message: `Elapsed time:      ${elapsed}` };
+  const cacheStats = getCacheStats();
+  yield { type: "step", agent: "audit", message: `Schema cache:      ${cacheStats.hits} hit(s), ${cacheStats.misses} miss(es)` };
+  yield { type: "done", totalFindings, durationMs: elapsedMs };
 }

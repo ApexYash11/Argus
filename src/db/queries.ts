@@ -368,6 +368,17 @@ export function getCachedSchema(headerFingerprint: string): CachedSchema | null 
   };
 }
 
+export function clearSchemaCache(): void {
+  const db = getDb();
+  db.run("DELETE FROM schema_cache");
+}
+
+export function getSchemaCacheCount(): number {
+  const db = getDb();
+  const row = db.query("SELECT COUNT(*) as count FROM schema_cache").get() as { count: number };
+  return row.count;
+}
+
 export function setCachedSchema(fingerprint: string, schema: string, dataType?: string, confidence?: number): void {
   const db = getDb();
   db.run(
@@ -388,6 +399,28 @@ export function setCachedSchema(fingerprint: string, schema: string, dataType?: 
   );
 }
 
+const ISO_CURRENCIES = new Set([
+  "AED","AFN","ALL","AMD","ANG","AOA","ARS","AUD","AWG","AZN","BAM","BBD","BDT","BGN","BHD","BIF","BMD","BND","BOB","BRL",
+  "BSD","BTN","BWP","BYN","BZD","CAD","CDF","CHF","CLP","CNY","COP","CRC","CUP","CVE","CZK","DJF","DKK","DOP","DZD","EGP",
+  "ERN","ETB","EUR","FJD","FKP","FOK","GBP","GEL","GGP","GHS","GIP","GMD","GNF","GTQ","GYD","HKD","HNL","HRK","HTG","HUF",
+  "IDR","ILS","IMP","INR","IQD","IRR","ISK","JEP","JMD","JOD","JPY","KES","KGS","KHR","KID","KMF","KRW","KWD","KYD","KZT",
+  "LAK","LBP","LKR","LRD","LSL","LYD","MAD","MDL","MGA","MKD","MMK","MNT","MOP","MRU","MUR","MVR","MWK","MXN","MYR","MZN",
+  "NAD","NGN","NIO","NOK","NPR","NZD","OMR","PAB","PEN","PGK","PHP","PKR","PLN","PYG","QAR","RON","RSD","RUB","RWF","SAR",
+  "SBD","SCR","SDG","SEK","SGD","SHP","SLL","SOS","SRD","SSP","STN","SYP","SZL","THB","TJS","TMT","TND","TOP","TRY","TTD",
+  "TVD","TWD","TZS","UAH","UGX","USD","UYU","UZS","VES","VND","VUV","WST","XAF","XCD","XDR","XOF","XPF","YER","ZAR","ZMW",
+]);
+
+export function getDominantCurrency(): string {
+  const db = getDb();
+  const rows = db.query(
+    "SELECT currency, COUNT(*) as cnt FROM financial_records WHERE currency IS NOT NULL AND currency != '' GROUP BY currency ORDER BY cnt DESC"
+  ).all() as Array<{ currency: string; cnt: number }>;
+  for (const row of rows) {
+    if (ISO_CURRENCIES.has(row.currency)) return row.currency;
+  }
+  return "INR";
+}
+
 export function getRecordCount(): number {
   const db = getDb();
   const row = db.query("SELECT COUNT(*) as count FROM financial_records").get() as { count: number };
@@ -400,6 +433,12 @@ export function updateVendorTrustScore(vendorId: string, delta: number): void {
     "UPDATE vendors SET trust_score = MAX(0.0, MIN(1.0, COALESCE(trust_score, 1.0) + $delta)) WHERE id = $id",
     { $id: vendorId, $delta: delta }
   );
+}
+
+export function getRecordQualityFlagCount(flagName: string): number {
+  const db = getDb();
+  const row = db.query("SELECT COUNT(*) as count FROM financial_records WHERE raw LIKE $flagPattern").get({ $flagPattern: `%${flagName}%` }) as { count: number };
+  return row.count;
 }
 
 export function getRecordCountByType(type: string): number {

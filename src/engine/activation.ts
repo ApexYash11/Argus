@@ -1,5 +1,5 @@
 import type { AgentType } from "../model/types";
-import { getRecordCount, getRecordCountByType, getHistoryDays, getDateRange, getAllFinancialRecords } from "../db/queries";
+import { getRecordCount, getRecordCountByType, getHistoryDays, getDateRange, getRecordQualityFlagCount } from "../db/queries";
 
 interface AgentActivation {
   agent: AgentType;
@@ -9,18 +9,10 @@ interface AgentActivation {
 }
 
 function getQualityFlagRatio(flagName: string): number {
-  const records = getAllFinancialRecords();
-  if (records.length === 0) return 0;
-  let matchCount = 0;
-  for (const r of records) {
-    try {
-      const parsed = JSON.parse(r.raw);
-      if (parsed._quality?.includes(flagName)) matchCount++;
-    } catch {
-      // skip malformed raw
-    }
-  }
-  return matchCount / records.length;
+  const totalCount = getRecordCount();
+  if (totalCount === 0) return 0;
+  const matchCount = getRecordQualityFlagCount(flagName);
+  return matchCount / totalCount;
 }
 
 function getLatestRecordDate(): string | null {

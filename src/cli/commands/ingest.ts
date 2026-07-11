@@ -4,7 +4,7 @@ import type { AuditEvent, SchemaDetectionResult } from "../../model/types";
 import { parseCsvFile } from "../../ingest/csv-parser";
 import { parseXlsxFile } from "../../ingest/xlsx-parser";
 import { normalizeRecord, normalizeUsageRecord } from "../../ingest/normalizer";
-import { universalNormalize } from "../../ingest/universal-normalizer";
+import { universalNormalize, resetDateLocaleCache } from "../../ingest/universal-normalizer";
 import { inspectFile } from "../../ingest/file-inspector";
 import { sampleRows } from "../../ingest/smart-sampler";
 import { detectSchema } from "../../ingest/schema-detector";
@@ -235,6 +235,8 @@ async function* newPipeline(filePath: string, options: IngestOptions): AsyncGene
 
   // Filter empty trailing rows
   const dataRows = inspection.allRows.slice(0, inspection.totalDataRows);
+
+  resetDateLocaleCache();
 
   for (let i = 0; i < rowLimit; i++) {
     const rawRowValues = dataRows[i];

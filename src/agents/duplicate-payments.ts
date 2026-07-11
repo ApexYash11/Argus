@@ -13,12 +13,34 @@ function daysBetween(a: string, b: string): number {
   return Math.abs(d2 - d1) / (1000 * 60 * 60 * 24);
 }
 
+function diceCoefficient(a: string, b: string): number {
+  if (a === b) return 1;
+  if (a.length < 2 || b.length < 2) return 0;
+  const bigrams = new Map<string, number>();
+  for (let i = 0; i < a.length - 1; i++) {
+    const bg = a.slice(i, i + 2);
+    bigrams.set(bg, (bigrams.get(bg) ?? 0) + 1);
+  }
+  let intersectionSize = 0;
+  for (let i = 0; i < b.length - 1; i++) {
+    const bg = b.slice(i, i + 2);
+    const count = bigrams.get(bg) ?? 0;
+    if (count > 0) {
+      bigrams.set(bg, count - 1);
+      intersectionSize++;
+    }
+  }
+  return (2 * intersectionSize) / (a.length - 1 + b.length - 1);
+}
+
 function referenceSimilarity(refA: string | undefined, refB: string | undefined): number {
   if (!refA || !refB) return 0;
   const partsA = refA.split("-");
   const partsB = refB.split("-");
-  if (partsA.length < 2 || partsB.length < 2) return refA === refB ? 1 : 0;
-  return partsA.slice(0, -1).join("-") === partsB.slice(0, -1).join("-") ? 0.8 : 0;
+  if (partsA.length >= 2 && partsB.length >= 2) {
+    return partsA.slice(0, -1).join("-") === partsB.slice(0, -1).join("-") ? 0.8 : 0;
+  }
+  return diceCoefficient(refA, refB) * 0.6;
 }
 
 interface DuplicateCandidate {

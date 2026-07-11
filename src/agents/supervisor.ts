@@ -3,6 +3,7 @@ import { getActiveAgents } from "../engine/activation";
 import { runInvestigation, type AgentDefinition } from "./state-machine";
 import { initScratchpad, writeScratchpadEntry, pruneScratchpad } from "../engine/scratchpad";
 
+const AGENT_TIMEOUT_MS = 120_000;
 const agentImpls: Partial<Record<AgentType, AgentDefinition>> = {};
 
 export function registerAgent(agentType: AgentType, def: AgentDefinition): void {
@@ -50,12 +51,21 @@ export async function runSupervisor(
         message: `Dispatching ${agentType} agent`,
       };
 
+      const agentSignal = new AbortController();
+      const timeoutId = setTimeout(() => {
+        agentSignal.abort();
+      }, AGENT_TIMEOUT_MS);
+
+      if (signal) {
+        signal.addEventListener("abort", () => agentSignal.abort(), { once: true });
+      }
+
       try {
         const eventsBuffer: AuditEvent[] = [];
         const state = await runInvestigation(trigger, agentType, def, (event) => {
           writeScratchpadEntry({ type: "agent_event", agent: agentType, message: JSON.stringify(event) });
           eventsBuffer.push(event);
-        }, config, signal);
+        }, config, agentSignal.signal);
 
         if (signal?.aborted) break;
 
@@ -78,6 +88,8 @@ export async function runSupervisor(
       } catch (err: any) {
         yield { type: "step", agent: agentType, message: `Error: ${err.message}` };
         writeScratchpadEntry({ type: "agent_error", agent: agentType, message: err.message });
+      } finally {
+        clearTimeout(timeoutId);
       }
     }
 

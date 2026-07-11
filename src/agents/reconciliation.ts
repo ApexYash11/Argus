@@ -50,8 +50,7 @@ registerAgent("reconciliation", {
     const comparisons: Comparison[] = [];
     const { invoices, payments } = (ctx.state._cache ?? { invoices: getFinancialRecordsByType("invoice"), payments: getFinancialRecordsByType("payment").filter((r) => r.amount > 0) }) as unknown as { invoices: FinancialRecord[]; payments: FinancialRecord[] };
 
-    const dates = [...invoices.map((i) => i.date), ...payments.map((p) => p.date)].filter(Boolean);
-    const referenceDate = dates.length > 0 ? dates[0]! : new Date().toISOString().slice(0, 10);
+    const referenceDate = new Date().toISOString().slice(0, 10);
 
     const paymentsByVendor = new Map<string, FinancialRecord[]>();
     for (const p of payments) {

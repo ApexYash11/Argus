@@ -127,11 +127,13 @@ export function resolveVendor(rawName: string): { vendorId: string; canonicalNam
   }
 
   if (bestScore >= 0.6 && bestVendor) {
-    upsertVendor({
-      ...bestVendor,
-      aliases: [...new Set([...bestVendor.aliases, rawName])],
-      lastSeen: new Date().toISOString(),
-    });
+    if (bestScore >= 0.85 && rawName.length > 2) {
+      upsertVendor({
+        ...bestVendor,
+        aliases: [...new Set([...bestVendor.aliases, rawName])],
+        lastSeen: new Date().toISOString(),
+      });
+    }
     return { vendorId: bestVendor.id, canonicalName: bestVendor.canonicalName, confidence: Math.round(bestScore * 100) / 100, method: "fuzzy" };
   }
 

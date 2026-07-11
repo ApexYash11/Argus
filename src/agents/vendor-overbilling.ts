@@ -2,9 +2,10 @@ import { registerAgent } from "./supervisor";
 import type { Comparison, FinancialRecord, ContractTerms } from "../model/types";
 import { getFinancialRecordsByType, getAllContractTerms } from "../db/queries";
 import { extractQualityFlags, computeQualityPenalty } from "./nodes/score-confidence";
+import { getYearMonth } from "../ingest/date-utils";
 
 function invoicePeriod(dateOrPeriod: string, frequency: string): string {
-  if (frequency === "monthly") return dateOrPeriod.slice(0, 7);
+  if (frequency === "monthly") return getYearMonth(dateOrPeriod);
   if (frequency === "quarterly") {
     const m = parseInt(dateOrPeriod.slice(5, 7), 10);
     const q = m <= 3 ? "Q1" : m <= 6 ? "Q2" : m <= 9 ? "Q3" : "Q4";
@@ -66,6 +67,7 @@ registerAgent("vendor-overbilling", {
         const periodBuckets = new Map<string, number>();
         for (const inv of invs) {
           const invPeriod = inv.periodStart ?? inv.date;
+          if (!invPeriod) continue;
           const period = invoicePeriod(invPeriod, freq);
           periodBuckets.set(period, (periodBuckets.get(period) ?? 0) + inv.amount);
         }

@@ -2,6 +2,7 @@ import { registerAgent } from "./supervisor";
 import type { Comparison, FinancialRecord } from "../model/types";
 import { getAllFinancialRecords, getHistoryDays } from "../db/queries";
 import { extractQualityFlags, computeQualityPenalty } from "./nodes/score-confidence";
+import { getYearMonth } from "../ingest/date-utils";
 
 function zScore(value: number, mean: number, stddev: number): number {
   if (stddev === 0) return 0;
@@ -67,7 +68,8 @@ registerAgent("anomaly-detection", {
 
     const byMonth = new Map<string, number[]>();
     for (const p of records) {
-      const month = p.date.slice(0, 7);
+      const month = getYearMonth(p.date);
+      if (month === "unknown") continue;
       const amounts = byMonth.get(month) ?? [];
       amounts.push(p.amount);
       byMonth.set(month, amounts);
@@ -102,7 +104,8 @@ registerAgent("anomaly-detection", {
 
     const vendorByMonth = new Map<string, Map<string, number>>();
     for (const p of records) {
-      const month = p.date.slice(0, 7);
+      const month = getYearMonth(p.date);
+      if (month === "unknown") continue;
       const vendorMonth = vendorByMonth.get(p.vendorId) ?? new Map();
       vendorMonth.set(month, (vendorMonth.get(month) ?? 0) + p.amount);
       vendorByMonth.set(p.vendorId, vendorMonth);

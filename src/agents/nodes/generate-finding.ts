@@ -1,8 +1,9 @@
 import type { Finding } from "../../model/types";
 import type { AgentContext } from "../state-machine";
 import { generateFingerprint, generateFindingId, assignSeverity } from "../../engine/finding-builder";
-import { insertFinding, findExistingFingerprint, updateVendorTrustScore, updateFindingRecommendation } from "../../db/queries";
+import { insertFinding, findExistingFingerprint, updateVendorTrustScore, updateFindingRecommendation, getDominantCurrency } from "../../db/queries";
 import { writeScratchpadEntry } from "../../engine/scratchpad";
+import { getYearMonth } from "../../ingest/date-utils";
 
 let activeRecommendations = 0;
 const MAX_CONCURRENT_RECS = 3;
@@ -48,7 +49,7 @@ export async function generateFinding(ctx: AgentContext): Promise<Finding | null
 
   const vendorId = trigger.vendorId ?? "unknown";
   const amount = trigger.amount ?? 0;
-  const periodStart = trigger.timestamp.slice(0, 7);
+  const periodStart = getYearMonth(trigger.timestamp);
 
   const fingerprint = generateFingerprint(agentType, vendorId, amount, periodStart);
   const existing = findExistingFingerprint(fingerprint);
@@ -63,7 +64,7 @@ export async function generateFinding(ctx: AgentContext): Promise<Finding | null
 
   const findingId = generateFindingId();
   const severity = assignSeverity(confidence, amount);
-  const impactCurrency = "INR";
+  const impactCurrency = getDominantCurrency();
 
   const evidenceSummary = evidence.map((e) => `${e.key}: ${e.value}`).join("; ");
   const comparisonSummary = comparisons.map((c) => `${c.label}: expected ${c.expected}, got ${c.actual}${c.delta ? ` (${c.delta})` : ""}`).join("; ");

@@ -1,15 +1,21 @@
 import { registerAgent } from "./supervisor";
 import type { Comparison, FinancialRecord } from "../model/types";
-import { getFinancialRecordsByType } from "../db/queries";
+import { getFinancialRecordsByType, getDominantCurrency } from "../db/queries";
 import type { AppConfig } from "../model/types";
 import { extractQualityFlags, computeQualityPenalty } from "./nodes/score-confidence";
 
-const DEFAULT_PER_DIEM_LIMITS: Record<string, number> = {
-  meals: 3000,
-  travel: 10000,
-  "client-entertainment": 20000,
-  "office-supplies": 2000,
-};
+function defaultPerDiemLimits(currency: string): Record<string, number> {
+  if (currency === "USD") {
+    return { meals: 36, travel: 120, "client-entertainment": 240, "office-supplies": 24 };
+  }
+  if (currency === "EUR") {
+    return { meals: 30, travel: 100, "client-entertainment": 200, "office-supplies": 20 };
+  }
+  if (currency === "GBP") {
+    return { meals: 25, travel: 85, "client-entertainment": 170, "office-supplies": 17 };
+  }
+  return { meals: 3000, travel: 10000, "client-entertainment": 20000, "office-supplies": 2000 };
+}
 
 const DEFAULT_PROHIBITED_CATEGORIES = ["alcohol", "gambling", "personal"];
 
@@ -55,7 +61,8 @@ registerAgent("policy-violations", {
     const config = (ctx as any).config as AppConfig | undefined;
     const policy = config?.policy;
 
-    const perDiemLimits = { ...DEFAULT_PER_DIEM_LIMITS, ...(policy?.perDiemLimits ?? {}) };
+    const companyCurrency = getDominantCurrency();
+    const perDiemLimits = { ...defaultPerDiemLimits(companyCurrency), ...(policy?.perDiemLimits ?? {}) };
     const prohibitedCategories = policy?.prohibitedCategories ?? DEFAULT_PROHIBITED_CATEGORIES;
     const maxWithoutReceipt = policy?.maxExpenseWithoutReceipt ?? DEFAULT_MAX_WITHOUT_RECEIPT;
     const preApprovalThreshold = policy?.preApprovalThreshold ?? 20000;

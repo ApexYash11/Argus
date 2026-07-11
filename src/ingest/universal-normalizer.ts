@@ -131,6 +131,11 @@ function parseDateRaw(value: string, preferDDMM: boolean): string {
   const excel = parseExcelSerial(trimmed);
   if (excel) return excel.toISOString().split("T")[0]!;
 
+  const yyyymmdd = trimmed.match(/^(\d{4})(\d{2})(\d{2})$/);
+  if (yyyymmdd) {
+    return `${yyyymmdd[1]}-${yyyymmdd[2]}-${yyyymmdd[3]}`;
+  }
+
   const iso = new Date(trimmed);
   if (!isNaN(iso.getTime()) && /^\d{4}-\d{2}-\d{2}/.test(trimmed)) {
     return iso.toISOString().split("T")[0]!;
@@ -191,12 +196,26 @@ function detectCurrencyFromColumn(values: string[]): string | null {
   return matchCount > values.length * 0.8 ? lastCurrency : null;
 }
 
+function detectCurrencyFromAmount(amountValues: string[]): string | null {
+  const symbolMap: Record<string, string> = { "$": "USD", "€": "EUR", "£": "GBP", "¥": "JPY", "₹": "INR" };
+  for (const v of amountValues) {
+    for (const [symbol, code] of Object.entries(symbolMap)) {
+      if (v.includes(symbol)) return code;
+    }
+  }
+  return null;
+}
+
 function isFutureDated(dateStr: string): boolean {
   if (!dateStr) return false;
   const d = new Date(dateStr);
   const thirtyDays = new Date();
   thirtyDays.setDate(thirtyDays.getDate() + 30);
   return d > thirtyDays;
+}
+
+export function resetDateLocaleCache(): void {
+  dateLocaleCache = null;
 }
 
 export function universalNormalize(
@@ -270,6 +289,10 @@ export function universalNormalize(
   if (!currency && schema.currency_col) {
     const colValues = columnStats.find((c) => c.columnName === schema.currency_col)?.sample_values ?? [];
     currency = detectCurrencyFromColumn(colValues) ?? "";
+  }
+  if (!currency) {
+    const amountColValues = columnStats.find((c) => c.columnName === schema.amount_col)?.sample_values ?? [];
+    currency = detectCurrencyFromAmount(amountColValues) ?? "";
   }
   if (!currency) {
     currency = "INR";

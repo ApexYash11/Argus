@@ -66,7 +66,7 @@ export function parseXlsxFile(filePath: string): ParseResult<Record<string, unkn
     }
 
     // Map debit/credit to amount
-    const debit = Number(raw.Debit ?? raw.Debit ?? 0);
+    const debit = Number(raw.Debit ?? raw.debit ?? 0);
     const credit = Number(raw.Credit ?? raw.Credit ?? 0);
     const amount = debit > credit ? debit : credit;
 
@@ -77,7 +77,7 @@ export function parseXlsxFile(filePath: string): ParseResult<Record<string, unkn
       date: dateStr,
       amount,
       description: raw.Description ?? raw.description ?? "",
-      cleared: debit > 0 ? "true" : "true",
+      cleared: debit > 0 ? "true" : "false",
       reference: raw.GLID ?? raw.Reference ?? raw.reference ?? "",
     };
 

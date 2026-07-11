@@ -76,8 +76,7 @@ registerAgent("saas-waste", {
       usageByVendor.set(key, existing);
     }
 
-    const dates = subs.map((s) => s.date).filter(Boolean);
-    const referenceDate = dates.length > 0 ? dates[0]! : new Date().toISOString().slice(0, 10);
+    const referenceDate = new Date().toISOString().slice(0, 10);
 
     for (const sub of subs) {
       const seatCount = parseSeatCount(sub.description);
@@ -97,7 +96,8 @@ registerAgent("saas-waste", {
 
       if (activeUsers < seatCount) {
         const wastedSeats = seatCount - activeUsers;
-        const wastedAmount = (sub.amount / seatCount) * wastedSeats;
+        const costPerSeat = seatCount > 0 ? sub.amount / seatCount : sub.amount;
+        const wastedAmount = costPerSeat * wastedSeats;
         comparisons.push({
           label: sub.vendorId,
           expected: `${seatCount} seats (${sub.amount}/mo)`,

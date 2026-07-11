@@ -2,6 +2,7 @@ import { registerAgent } from "./supervisor";
 import type { Comparison, FinancialRecord } from "../model/types";
 import { getFinancialRecordsByType, getHistoryDays } from "../db/queries";
 import { extractQualityFlags, computeQualityPenalty } from "./nodes/score-confidence";
+import { getYearMonth } from "../ingest/date-utils";
 
 function isMonthComplete(month: string): boolean {
   const y = Number(month.slice(0, 4));
@@ -57,7 +58,8 @@ registerAgent("cashflow-risk", {
 
     const byMonth = new Map<string, number[]>();
     for (const p of payments) {
-      const month = p.date.slice(0, 7);
+      const month = getYearMonth(p.date);
+      if (month === "unknown") continue;
       const amounts = byMonth.get(month) ?? [];
       amounts.push(p.amount);
       byMonth.set(month, amounts);

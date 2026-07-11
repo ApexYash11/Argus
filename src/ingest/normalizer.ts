@@ -40,15 +40,18 @@ function safeDate(value: string): string {
   const trimmed = String(value).trim();
   const iso = new Date(trimmed);
   if (!isNaN(iso.getTime())) return iso.toISOString().split("T")[0];
-  const eu = trimmed.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
-  if (eu) {
-    const d = new Date(`${eu[3]}-${eu[2]}-${eu[1]}`);
-    if (!isNaN(d.getTime())) return d.toISOString().split("T")[0];
-  }
-  const us = trimmed.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
-  if (us) {
-    const d = new Date(`${us[3]}-${us[1]}-${us[2]}`);
-    if (!isNaN(d.getTime())) return d.toISOString().split("T")[0];
+  const slashMatch = trimmed.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+  if (slashMatch) {
+    const first = parseInt(slashMatch[1]!, 10);
+    const second = parseInt(slashMatch[2]!, 10);
+    if (first > 12 && second <= 31) {
+      const d = new Date(`${slashMatch[3]}-${slashMatch[2]}-${slashMatch[1]}`);
+      if (!isNaN(d.getTime())) return d.toISOString().split("T")[0];
+    }
+    if (second > 12 && first <= 12) {
+      const d = new Date(`${slashMatch[3]}-${slashMatch[1]}-${slashMatch[2]}`);
+      if (!isNaN(d.getTime())) return d.toISOString().split("T")[0];
+    }
   }
   return new Date().toISOString().split("T")[0];
 }
@@ -167,6 +170,7 @@ export function normalizeRecord(raw: RawRecord, currency: string = "INR"): Norma
       rawStr = JSON.stringify({ ...parsed, _quality: flags });
     }
   } catch {
+    flags.push("raw_parse_failed");
     rawStr = raw._raw;
   }
 
