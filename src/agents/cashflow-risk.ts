@@ -1,6 +1,8 @@
 import { registerAgent } from "./supervisor";
-import type { Comparison } from "../model/types";
+import type { Comparison, FinancialRecord } from "../model/types";
 import { getFinancialRecordsByType, getHistoryDays } from "../db/queries";
+import { extractQualityFlags, computeQualityPenalty } from "./nodes/score-confidence";
+import { getYearMonth } from "../ingest/date-utils";
 
 function isMonthComplete(month: string): boolean {
   const y = Number(month.slice(0, 4));
@@ -11,13 +13,26 @@ function isMonthComplete(month: string): boolean {
 
 registerAgent("cashflow-risk", {
   async classify(ctx) {
-    ctx.emit({ type: "step", agent: "cashflow-risk", message: "Projecting cash flow and runway..." });
-  },
-
-  async retrieve(ctx) {
     const payments = getFinancialRecordsByType("payment").filter((r) => r.amount > 0);
     const commitments = getFinancialRecordsByType("commitment");
     const historyDays = getHistoryDays();
+    if (payments.length === 0 || historyDays < 60) {
+      ctx.emit({ type: "agent_skipped", agent: "cashflow-risk", reason: payments.length === 0 ? "No payments to analyze" : `Insufficient history: ${Math.round(historyDays)} days (need 60+)` });
+      ctx.state._skip = true;
+      return;
+    }
+    ctx.emit({ type: "step", agent: "cashflow-risk", message: `Found ${payments.length} payments and ${commitments.length} commitments across ${Math.round(historyDays)} days` });
+  },
+
+  async retrieve(ctx) {
+    if (!ctx.state._cache) {
+      ctx.state._cache = {
+        payments: getFinancialRecordsByType("payment").filter((r) => r.amount > 0),
+        commitments: getFinancialRecordsByType("commitment"),
+        historyDays: getHistoryDays(),
+      };
+    }
+    const { payments, commitments, historyDays } = ctx.state._cache as unknown as { payments: FinancialRecord[]; commitments: FinancialRecord[]; historyDays: number };
 
     ctx.state.evidence = [
       { key: "payment_count", value: String(payments.length), sourceDocId: "db" },
@@ -32,18 +47,19 @@ registerAgent("cashflow-risk", {
 
   async compare(ctx) {
     const comparisons: Comparison[] = [];
-    const historyDays = getHistoryDays();
+    const cache = (ctx.state._cache ?? { payments: getFinancialRecordsByType("payment").filter((r) => r.amount > 0), commitments: getFinancialRecordsByType("commitment"), historyDays: getHistoryDays() }) as unknown as { payments: FinancialRecord[]; commitments: FinancialRecord[]; historyDays: number };
+    const historyDays = cache.historyDays;
     if (historyDays < 60) {
       ctx.emit({ type: "agent_skipped", agent: "cashflow-risk", reason: `Insufficient history: ${Math.round(historyDays)} days (need 60+)` });
       return [];
     }
-
-    const payments = getFinancialRecordsByType("payment").filter((r) => r.amount > 0);
-    const commitments = getFinancialRecordsByType("commitment");
+    const payments = cache.payments;
+    const commitments = cache.commitments;
 
     const byMonth = new Map<string, number[]>();
     for (const p of payments) {
-      const month = p.date.slice(0, 7);
+      const month = getYearMonth(p.date);
+      if (month === "unknown") continue;
       const amounts = byMonth.get(month) ?? [];
       amounts.push(p.amount);
       byMonth.set(month, amounts);
@@ -119,6 +135,11 @@ registerAgent("cashflow-risk", {
     if (highConcentration > 0) { score += Math.min(highConcentration * 0.05, 0.1); reasons.push(`${highConcentration} concentration risk(s)`); }
     if (freshCount > 0) { score += 0.1; reasons.push(`${freshCount} cash flow signal(s)`); }
     if (freshCount === 0) { score = 0; reasons.push("no cash flow signals"); }
+
+    const allCached = Object.values(ctx.state._cache ?? {}).flat() as any[];
+    const qualityFlags = extractQualityFlags(allCached);
+    const penalty = computeQualityPenalty(qualityFlags);
+    score = Math.max(0, score - penalty);
 
     return {
       score: Math.round(Math.min(score, 0.95) * 100) / 100,

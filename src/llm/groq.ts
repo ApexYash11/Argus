@@ -12,7 +12,8 @@ const LLM_TIMEOUT = 30_000;
 
 export async function groqComplete(
   prompt: string,
-  _systemPrompt?: string
+  _systemPrompt?: string,
+  timeoutMs: number = LLM_TIMEOUT
 ): Promise<LLMResponse> {
   const apiKey = process.env.GROQ_API_KEY;
   if (!apiKey) {
@@ -21,7 +22,7 @@ export async function groqComplete(
 
   const start = performance.now();
   const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), LLM_TIMEOUT);
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
 
   try {
     const res = await fetch("https://api.groq.com/openai/v1/chat/completions", {
@@ -90,7 +91,8 @@ function combineSignals(...signals: (AbortSignal | undefined)[]): { signal: Abor
 export async function* groqStream(
   prompt: string,
   systemPrompt?: string,
-  signal?: AbortSignal
+  signal?: AbortSignal,
+  timeoutMs: number = LLM_TIMEOUT
 ): AsyncGenerator<LLMChunk> {
   const apiKey = process.env.GROQ_API_KEY;
   if (!apiKey) {
@@ -98,7 +100,7 @@ export async function* groqStream(
     return;
   }
 
-  const timeout = timeoutSignal(LLM_TIMEOUT);
+  const timeout = timeoutSignal(timeoutMs);
   const combined = combineSignals(signal, timeout.signal);
   const start = performance.now();
   let fullText = "";

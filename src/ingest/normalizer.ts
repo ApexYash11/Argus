@@ -25,30 +25,41 @@ function generateRecordId(): string {
   return `FR-${Date.now().toString(36).toUpperCase()}${crypto.randomBytes(3).toString("hex").toUpperCase()}`;
 }
 
-function parseDate(value: string): string {
-  if (!value) return new Date().toISOString().slice(0, 10);
-  value = String(value).trim();
-  const d = new Date(value);
-  if (!isNaN(d.getTime())) return d.toISOString().slice(0, 10);
-  const parts = value.split(/[/\-.]/);
-  if (parts.length !== 3) return value;
-  let [a, b, c] = parts.map((p) => p.padStart(2, "0"));
-  if (a.length === 4) return `${a}-${b}-${c}`;
-  if (c.length === 4) {
-    const numA = parseInt(a, 10);
-    const numB = parseInt(b, 10);
-    if (numA > 12 && numB <= 12) return `${c}-${b}-${a}`;
-    if (numA > 12) return `${c}-${b}-${a}`;
-    if (numB > 12) return `${c}-${a}-${b}`;
-    return `${c}-${a}-${b}`;
+function safeAmount(raw: unknown): number {
+  const n = Number(raw);
+  if (isNaN(n) || !isFinite(n)) {
+    throw new Error(`Invalid amount: "${raw}" — expected a number`);
   }
-  return `${c}-${a}-${b}`;
+  return n;
+}
+
+function safeDate(value: string): string {
+  if (!value || String(value).trim() === "") {
+    return new Date().toISOString().split("T")[0];
+  }
+  const trimmed = String(value).trim();
+  const iso = new Date(trimmed);
+  if (!isNaN(iso.getTime())) return iso.toISOString().split("T")[0];
+  const slashMatch = trimmed.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+  if (slashMatch) {
+    const first = parseInt(slashMatch[1]!, 10);
+    const second = parseInt(slashMatch[2]!, 10);
+    if (first > 12 && second <= 31) {
+      const d = new Date(`${slashMatch[3]}-${slashMatch[2]}-${slashMatch[1]}`);
+      if (!isNaN(d.getTime())) return d.toISOString().split("T")[0];
+    }
+    if (second > 12 && first <= 12) {
+      const d = new Date(`${slashMatch[3]}-${slashMatch[1]}-${slashMatch[2]}`);
+      if (!isNaN(d.getTime())) return d.toISOString().split("T")[0];
+    }
+  }
+  return new Date().toISOString().split("T")[0];
 }
 
 function inferPeriod(sub: Record<string, unknown>): { start?: string; end?: string } {
   const renewalDate = sub.renewal_date as string | undefined;
   if (renewalDate) {
-    const parsed = parseDate(renewalDate);
+    const parsed = safeDate(renewalDate);
     const d = new Date(parsed);
     if (isNaN(d.getTime())) return {};
     const start = new Date(d.getFullYear(), d.getMonth() - 1, d.getDate());
@@ -72,6 +83,8 @@ export function normalizeRecord(raw: RawRecord, currency: string = "INR"): Norma
   const vendorName = String(raw.vendor ?? raw.vendor_name ?? raw.vendorName ?? "");
   const resolved = resolveVendor(vendorName);
 
+  const flags: string[] = [];
+
   let recordType: FinancialRecordType = "payment";
   let amount = 0;
   let date = new Date().toISOString().slice(0, 10);
@@ -83,8 +96,9 @@ export function normalizeRecord(raw: RawRecord, currency: string = "INR"): Norma
   switch (type) {
     case "subscriptions": {
       recordType = "subscription";
-      amount = Math.abs(Number(raw.monthly_amount ?? raw.amount ?? 0));
-      date = parseDate(String(raw.renewal_date ?? raw.date ?? ""));
+      amount = Math.abs(safeAmount(raw.monthly_amount ?? raw.amount ?? 0));
+      if (amount === 0) flags.push("amount_zero");
+      date = safeDate(String(raw.renewal_date ?? raw.date ?? ""));
       description = `${vendorName} subscription (${String(raw.seat_count ?? "?")} seats)`;
       const p = inferPeriod(raw);
       periodStart = p.start;
@@ -95,8 +109,9 @@ export function normalizeRecord(raw: RawRecord, currency: string = "INR"): Norma
     case "transactions": {
       const isCleared = raw.cleared === true || raw.cleared === "true" || raw.cleared === "yes" || raw.cleared === "1" || raw.cleared === 1;
       recordType = isCleared ? "payment" : "payment";
-      amount = Math.abs(Number(raw.amount ?? 0));
-      date = parseDate(String(raw.date ?? ""));
+      amount = Math.abs(safeAmount(raw.amount ?? 0));
+      if (amount === 0) flags.push("amount_zero");
+      date = safeDate(String(raw.date ?? ""));
       status = isCleared ? "cleared" : "pending";
       description = String(raw.description ?? raw.reference ?? "");
       periodEnd = date;
@@ -105,8 +120,9 @@ export function normalizeRecord(raw: RawRecord, currency: string = "INR"): Norma
 
     case "expense-reports": {
       recordType = "expense";
-      amount = Math.abs(Number(raw.amount ?? 0));
-      date = parseDate(String(raw.date ?? ""));
+      amount = Math.abs(safeAmount(raw.amount ?? 0));
+      if (amount === 0) flags.push("amount_zero");
+      date = safeDate(String(raw.date ?? ""));
       status = "cleared";
       description = `${raw.category ?? "expense"} — ${String(raw.employee ?? "")}`;
       break;
@@ -114,8 +130,9 @@ export function normalizeRecord(raw: RawRecord, currency: string = "INR"): Norma
 
     case "committed-expenses": {
       recordType = "commitment";
-      amount = Math.abs(Number(raw.amount ?? 0));
-      date = parseDate(String(raw.due_date ?? ""));
+      amount = Math.abs(safeAmount(raw.amount ?? 0));
+      if (amount === 0) flags.push("amount_zero");
+      date = safeDate(String(raw.due_date ?? ""));
       status = "pending";
       description = String(raw.description ?? `${vendorName} commitment`);
       break;
@@ -123,8 +140,9 @@ export function normalizeRecord(raw: RawRecord, currency: string = "INR"): Norma
 
     case "invoices": {
       recordType = "invoice";
-      amount = Math.abs(Number(raw.amount ?? 0));
-      date = parseDate(String(raw.date ?? ""));
+      amount = Math.abs(safeAmount(raw.amount ?? 0));
+      if (amount === 0) flags.push("amount_zero");
+      date = safeDate(String(raw.date ?? ""));
       status = raw.cleared === true || raw.cleared === "true" || raw.cleared === "yes" ? "cleared" : "pending";
       description = String(raw.description ?? `${vendorName} invoice`);
       break;
@@ -132,10 +150,28 @@ export function normalizeRecord(raw: RawRecord, currency: string = "INR"): Norma
 
     default: {
       recordType = "payment";
-      amount = Math.abs(Number(raw.amount ?? 0));
-      date = parseDate(String(raw.date ?? ""));
+      amount = Math.abs(safeAmount(raw.amount ?? 0));
+      if (amount === 0) flags.push("amount_zero");
+      date = safeDate(String(raw.date ?? ""));
       description = String(raw.description ?? vendorName);
     }
+  }
+
+  if (resolved.method === "fuzzy") flags.push("vendor_fuzzy_matched");
+  if (resolved.method === "new") flags.push("vendor_new_unverified");
+
+  // Inject quality flags into the stored raw JSON
+  let rawStr = raw._raw;
+  try {
+    const parsed = JSON.parse(raw._raw);
+    if (Array.isArray(parsed)) {
+      rawStr = JSON.stringify(parsed);
+    } else {
+      rawStr = JSON.stringify({ ...parsed, _quality: flags });
+    }
+  } catch {
+    flags.push("raw_parse_failed");
+    rawStr = raw._raw;
   }
 
   const record: FinancialRecord = {
@@ -147,7 +183,7 @@ export function normalizeRecord(raw: RawRecord, currency: string = "INR"): Norma
     date,
     description,
     status,
-    raw: raw._raw,
+    raw: rawStr,
     ingestedAt: new Date().toISOString(),
   };
 

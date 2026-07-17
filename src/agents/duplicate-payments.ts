@@ -1,6 +1,11 @@
 import { registerAgent } from "./supervisor";
 import type { FinancialRecord, Comparison } from "../model/types";
-import { getFinancialRecordsByType } from "../db/queries";
+import { getFinancialRecordsByType, getAllFinancialRecords } from "../db/queries";
+import { extractQualityFlags, computeQualityPenalty } from "./nodes/score-confidence";
+
+export interface DuplicateCache {
+  records: FinancialRecord[];
+}
 
 function daysBetween(a: string, b: string): number {
   const d1 = new Date(a).getTime();
@@ -8,12 +13,34 @@ function daysBetween(a: string, b: string): number {
   return Math.abs(d2 - d1) / (1000 * 60 * 60 * 24);
 }
 
+function diceCoefficient(a: string, b: string): number {
+  if (a === b) return 1;
+  if (a.length < 2 || b.length < 2) return 0;
+  const bigrams = new Map<string, number>();
+  for (let i = 0; i < a.length - 1; i++) {
+    const bg = a.slice(i, i + 2);
+    bigrams.set(bg, (bigrams.get(bg) ?? 0) + 1);
+  }
+  let intersectionSize = 0;
+  for (let i = 0; i < b.length - 1; i++) {
+    const bg = b.slice(i, i + 2);
+    const count = bigrams.get(bg) ?? 0;
+    if (count > 0) {
+      bigrams.set(bg, count - 1);
+      intersectionSize++;
+    }
+  }
+  return (2 * intersectionSize) / (a.length - 1 + b.length - 1);
+}
+
 function referenceSimilarity(refA: string | undefined, refB: string | undefined): number {
   if (!refA || !refB) return 0;
   const partsA = refA.split("-");
   const partsB = refB.split("-");
-  if (partsA.length < 2 || partsB.length < 2) return refA === refB ? 1 : 0;
-  return partsA.slice(0, -1).join("-") === partsB.slice(0, -1).join("-") ? 0.8 : 0;
+  if (partsA.length >= 2 && partsB.length >= 2) {
+    return partsA.slice(0, -1).join("-") === partsB.slice(0, -1).join("-") ? 0.8 : 0;
+  }
+  return diceCoefficient(refA, refB) * 0.6;
 }
 
 interface DuplicateCandidate {
@@ -28,16 +55,24 @@ interface DuplicateCandidate {
 
 registerAgent("duplicate-payments", {
   async classify(ctx) {
-    ctx.emit({ type: "step", agent: "duplicate-payments", message: "Scanning for duplicate payments..." });
+    const records = getAllFinancialRecords().filter((r) => r.amount > 0);
+    if (records.length < 2) {
+      ctx.emit({ type: "agent_skipped", agent: "duplicate-payments", reason: `Need at least 2 records with amount > 0 (found ${records.length})` });
+      ctx.state._skip = true;
+      return;
+    }
+    ctx.emit({ type: "step", agent: "duplicate-payments", message: `Found ${records.length} records to check for duplicates` });
   },
 
   async retrieve(ctx) {
-    const payments = getFinancialRecordsByType("payment").filter((r) => r.amount > 0);
-
+    if (!ctx.state._cache) {
+      ctx.state._cache = { records: getAllFinancialRecords().filter((r) => r.amount > 0) } as any;
+    }
+    const cache = ctx.state._cache as any;
+    const records: FinancialRecord[] = cache.records ?? [];
     ctx.state.evidence = [
-      { key: "payment_count", value: String(payments.length), sourceDocId: "db" },
+      { key: "record_count", value: String(records.length), sourceDocId: "db" },
     ];
-
     for (const e of ctx.state.evidence) {
       ctx.emit({ type: "evidence_found", key: e.key, value: e.value, sourceDocId: e.sourceDocId });
     }
@@ -45,10 +80,11 @@ registerAgent("duplicate-payments", {
 
   async compare(ctx) {
     const comparisons: Comparison[] = [];
-    const payments = getFinancialRecordsByType("payment").filter((r) => r.amount > 0);
+    const cache = ctx.state._cache as any;
+    const records: FinancialRecord[] = (cache?.records ?? getAllFinancialRecords().filter((r) => r.amount > 0)) as FinancialRecord[];
 
     const byVendor = new Map<string, FinancialRecord[]>();
-    for (const p of payments) {
+    for (const p of records) {
       const list = byVendor.get(p.vendorId) ?? [];
       list.push(p);
       byVendor.set(p.vendorId, list);
@@ -63,14 +99,10 @@ registerAgent("duplicate-payments", {
           const b = group[j]!;
 
           const amountScore = a.amount === b.amount ? 1 : (1 - Math.abs(a.amount - b.amount) / Math.max(a.amount, b.amount, 1));
-
           const gap = daysBetween(a.date, b.date);
           const dateScore = gap <= 3 ? 1 : gap <= 15 ? 0.7 : gap <= 45 ? 0.3 : 0;
-
           const refScore = referenceSimilarity(a.description, b.description);
-
           const periodScore = (a.periodStart === b.periodStart || a.periodEnd === b.periodEnd) ? 1 : 0.2;
-
           const statusScore = (a.status === "cleared" && b.status === "cleared") ? 1 : 0.75;
 
           const weightedScore =
@@ -113,6 +145,11 @@ registerAgent("duplicate-payments", {
       return s >= 80;
     }).length;
     if (highScoreDups > 0) score += Math.min(highScoreDups * 0.05, 0.1);
+
+    const allCached = Object.values(ctx.state._cache ?? {}).flat() as any[];
+    const qualityFlags = extractQualityFlags(allCached);
+    const penalty = computeQualityPenalty(qualityFlags);
+    score = Math.max(0, score - penalty);
 
     return {
       score: Math.round(Math.min(score, 0.95) * 100) / 100,

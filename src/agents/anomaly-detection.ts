@@ -1,6 +1,8 @@
 import { registerAgent } from "./supervisor";
-import type { Comparison } from "../model/types";
-import { getFinancialRecordsByType, getHistoryDays } from "../db/queries";
+import type { Comparison, FinancialRecord } from "../model/types";
+import { getAllFinancialRecords, getHistoryDays } from "../db/queries";
+import { extractQualityFlags, computeQualityPenalty } from "./nodes/score-confidence";
+import { getYearMonth } from "../ingest/date-utils";
 
 function zScore(value: number, mean: number, stddev: number): number {
   if (stddev === 0) return 0;
@@ -16,15 +18,35 @@ function isMonthComplete(month: string): boolean {
 
 registerAgent("anomaly-detection", {
   async classify(ctx) {
-    ctx.emit({ type: "step", agent: "anomaly-detection", message: "Analyzing spend patterns for anomalies..." });
+    const records = getAllFinancialRecords().filter((r) => r.amount > 0);
+    const historyDays = getHistoryDays();
+    if (records.length < 10 || historyDays < 60) {
+      ctx.emit({
+        type: "agent_skipped",
+        agent: "anomaly-detection",
+        reason: records.length < 10
+          ? `Need at least 10 records with amount > 0 (found ${records.length})`
+          : `Insufficient history: ${Math.round(historyDays)} days (need 60+)`,
+      });
+      ctx.state._skip = true;
+      return;
+    }
+    ctx.emit({ type: "step", agent: "anomaly-detection", message: `Found ${records.length} records across ${Math.round(historyDays)} days of history` });
   },
 
   async retrieve(ctx) {
-    const payments = getFinancialRecordsByType("payment").filter((r) => r.amount > 0);
-    const historyDays = getHistoryDays();
+    if (!ctx.state._cache) {
+      ctx.state._cache = {
+        records: getAllFinancialRecords().filter((r) => r.amount > 0),
+        historyDays: getHistoryDays(),
+      } as any;
+    }
+    const cache = ctx.state._cache as any;
+    const records: FinancialRecord[] = cache.records ?? [];
+    const historyDays: number = cache.historyDays ?? 0;
 
     ctx.state.evidence = [
-      { key: "payment_count", value: String(payments.length), sourceDocId: "db" },
+      { key: "record_count", value: String(records.length), sourceDocId: "db" },
       { key: "history_days", value: `${Math.round(historyDays)} days`, sourceDocId: "db" },
     ];
 
@@ -35,17 +57,19 @@ registerAgent("anomaly-detection", {
 
   async compare(ctx) {
     const comparisons: Comparison[] = [];
-    const historyDays = getHistoryDays();
+    const cache = ctx.state._cache as any;
+    const records: FinancialRecord[] = cache?.records ?? getAllFinancialRecords().filter((r) => r.amount > 0);
+    const historyDays: number = cache?.historyDays ?? getHistoryDays();
+
     if (historyDays < 60) {
       ctx.emit({ type: "agent_skipped", agent: "anomaly-detection", reason: `Insufficient history: ${Math.round(historyDays)} days (need 60+)` });
       return [];
     }
 
-    const payments = getFinancialRecordsByType("payment").filter((r) => r.amount > 0);
-
     const byMonth = new Map<string, number[]>();
-    for (const p of payments) {
-      const month = p.date.slice(0, 7);
+    for (const p of records) {
+      const month = getYearMonth(p.date);
+      if (month === "unknown") continue;
       const amounts = byMonth.get(month) ?? [];
       amounts.push(p.amount);
       byMonth.set(month, amounts);
@@ -79,8 +103,9 @@ registerAgent("anomaly-detection", {
     }
 
     const vendorByMonth = new Map<string, Map<string, number>>();
-    for (const p of payments) {
-      const month = p.date.slice(0, 7);
+    for (const p of records) {
+      const month = getYearMonth(p.date);
+      if (month === "unknown") continue;
       const vendorMonth = vendorByMonth.get(p.vendorId) ?? new Map();
       vendorMonth.set(month, (vendorMonth.get(month) ?? 0) + p.amount);
       vendorByMonth.set(p.vendorId, vendorMonth);
@@ -128,6 +153,11 @@ registerAgent("anomaly-detection", {
       score = 0.3;
       reasons.push("no anomalies detected");
     }
+
+    const allCached = Object.values(ctx.state._cache ?? {}).flat() as any[];
+    const qualityFlags = extractQualityFlags(allCached);
+    const penalty = computeQualityPenalty(qualityFlags);
+    score = Math.max(0, score - penalty);
 
     return {
       score: Math.round(Math.min(score, 0.95) * 100) / 100,

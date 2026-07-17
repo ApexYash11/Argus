@@ -1,0 +1,21 @@
+Date,Party,Reference,OutAmount,InAmount,Memo
+2024-01-05,Acme Corp,INV-001,1500.00,,Q1 consulting
+2024-01-12,Globex Inc,PAY-101,250.75,,Monthly retainer
+2024-01-15,Vehement Ventures,INV-002,5000.00,,Website redesign
+2024-01-20,Stark Industries,,,12000.00,R&D grant disbursement
+2024-01-25,Acme Corp,INV-003,1500.00,,Q1 consulting (second month)
+2024-02-01,Globex Inc,PAY-102,250.75,,Monthly retainer
+2024-02-05,Aperture Labs,INV-004,3200.00,,Portal calibration
+2024-02-10,Stark Industries,,,12000.00,R&D grant (second tranche)
+2024-02-15,Acme Corp,INV-005,1500.00,,Q1 consulting (third month)
+2024-02-20,Globex Inc,PAY-103,250.75,,Monthly retainer
+2024-02-25,Oscorp Industries,INV-006,8750.00,,Web shooter R&D
+2024-03-01,Acme Corp,INV-007,1500.00,,Q2 consulting prep
+2024-03-05,Globex Inc,PAY-104,250.75,,Monthly retainer
+2024-03-10,Stark Industries,,,12000.00,R&D grant (final tranche)
+2024-03-15,Aperture Labs,INV-008,3200.00,,GLaDOS maintenance
+2024-03-20,Vehement Ventures,INV-009,2500.00,,SEO optimization
+2024-03-25,Oscorp Industries,INV-010,8750.00,,Green goblin serum
+2024-03-28,Globex Inc,PAY-105,250.75,,Monthly retainer
+2024-03-30,Acme Corp,INV-011,1500.00,,Q2 consulting (first month)
+2024-03-31,Stark Industries,REFUND-01,,500.00,Equipment return

@@ -1,0 +1,7 @@
+{
+  "dataset": "test-data",
+  "generated_at": "2026-07-10T00:00:00.000Z",
+  "description": "Baseline expected findings for the clean test-data dataset. Update after running `argus audit test-data --non-interactive`.",
+  "notes": "This is a template. Run `argus audit test-data/ --non-interactive && argus report --json > test-data/expected-findings.json` to populate with actual results.",
+  "findings": []
+}

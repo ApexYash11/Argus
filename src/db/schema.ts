@@ -120,6 +120,15 @@ CREATE TABLE IF NOT EXISTS usage_records (
   ingested_at TEXT DEFAULT (datetime('now'))
 );
 
+CREATE TABLE IF NOT EXISTS schema_cache (
+  header_fingerprint TEXT PRIMARY KEY,
+  detected_schema TEXT NOT NULL,
+  data_type TEXT,
+  confidence REAL,
+  used_count INTEGER DEFAULT 1,
+  last_used TEXT DEFAULT (datetime('now'))
+);
+
 CREATE INDEX IF NOT EXISTS idx_usage_tool ON usage_records(tool);
 CREATE INDEX IF NOT EXISTS idx_usage_employee ON usage_records(employee_email);
 `;

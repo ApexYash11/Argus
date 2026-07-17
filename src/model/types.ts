@@ -56,6 +56,7 @@ export interface Finding {
   dismissedCount: number;
   createdAt: string;
   resolvedAt?: string;
+  recommendation?: string;
 }
 
 export interface Feedback {
@@ -109,6 +110,8 @@ export interface InvestigationState {
   finding?: Finding;
   events: AuditEvent[];
   effectiveFloor?: number;
+  _skip?: boolean;
+  _cache?: Record<string, unknown>;
 }
 
 export interface FinancialEvent {
@@ -144,6 +147,47 @@ export type ChatEvent =
   | { type: "error"; message: string }
   | { type: "clear" }
   | { type: "help"; commands: { name: string; description: string }[] };
+
+export type DetectedDataType =
+  | "transactions"
+  | "subscriptions"
+  | "expense-reports"
+  | "invoices"
+  | "general-ledger"
+  | "committed-expenses"
+  | "bank-statement"
+  | "credit-card-statement"
+  | "payroll"
+  | "unknown";
+
+export interface SchemaDetectionResult {
+  vendor_col: string | null;
+  amount_col: string | null;
+  amount_col_credit: string | null;
+  date_col: string | null;
+  reference_col: string | null;
+  description_col: string | null;
+  currency_col: string | null;
+  data_type: DetectedDataType;
+  expense_rows_only: boolean;
+  confidence: number;
+  reasoning: string;
+  warnings: string[];
+}
+
+export interface ColumnStats {
+  columnName: string;
+  numeric_ratio: number;
+  looks_like_date: boolean;
+  looks_like_amount: boolean;
+  null_count: number;
+  distinct_count: number;
+  empty_ratio: number;
+  min: number | null;
+  max: number | null;
+  common_prefix: string;
+  sample_values: string[];
+}
 
 export interface AppConfig {
   company: string;

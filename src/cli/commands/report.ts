@@ -1,6 +1,41 @@
-import { getFindings } from "../../db/queries";
+import { getFindings, getRecordCount, getFpRates } from "../../db/queries";
+import { getCacheStats } from "../../ingest/schema-detector";
 
-export async function generateReport(period?: string) {
+export interface ReportOutput {
+  period: string;
+  generatedAt: string;
+  summary: {
+    total: number;
+    open: number;
+    critical: number;
+    resolved: number;
+    dismissed: number;
+    totalImpact: number;
+    recordCount: number;
+  };
+  findings: Array<{
+    id: string;
+    agentType: string;
+    vendorId?: string;
+    severity: string;
+    status: string;
+    impactAmount?: number;
+    impactCurrency?: string;
+    confidence: number;
+    createdAt: string;
+  }>;
+  schemaCache: { hits: number; misses: number };
+  agentRates: Array<{
+    agentType: string;
+    resolved: number;
+    dismissed: number;
+    escalated: number;
+    fpRate: number | null;
+    tpRate: number | null;
+  }>;
+}
+
+export async function generateReport(period?: string): Promise<ReportOutput> {
   const since = period ? period.replace(/^Q\d-/, "").replace(/-.*$/, "") + "-01" : undefined;
   const findings = getFindings({ since });
   const openFindings = findings.filter((f) => f.status === "open");
@@ -9,6 +44,7 @@ export async function generateReport(period?: string) {
 
   return {
     period: period ?? "all-time",
+    generatedAt: new Date().toISOString(),
     summary: {
       total: findings.length,
       open: openFindings.length,
@@ -16,7 +52,20 @@ export async function generateReport(period?: string) {
       resolved: findings.filter((f) => f.status === "resolved").length,
       dismissed: findings.filter((f) => f.status === "dismissed").length,
       totalImpact,
+      recordCount: getRecordCount(),
     },
-    findings,
+    findings: findings.map((f) => ({
+      id: f.id,
+      agentType: f.agentType,
+      vendorId: f.vendorId,
+      severity: f.severity,
+      status: f.status,
+      impactAmount: f.impactAmount,
+      impactCurrency: f.impactCurrency,
+      confidence: f.confidence,
+      createdAt: f.createdAt,
+    })),
+    schemaCache: getCacheStats(),
+    agentRates: getFpRates(),
   };
 }

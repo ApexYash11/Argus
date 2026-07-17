@@ -190,6 +190,11 @@ export function updateFindingStatus(id: string, status: string, reason?: string)
   );
 }
 
+export function updateFindingRecommendation(id: string, recommendation: string): void {
+  const db = getDb();
+  db.run("UPDATE findings SET recommendation = $rec WHERE id = $id", { $id: id, $rec: recommendation });
+}
+
 export function incrementDismissCount(id: string): void {
   const db = getDb();
   db.run("UPDATE findings SET dismissed_count = dismissed_count + 1 WHERE id = $id", { $id: id });
@@ -340,6 +345,82 @@ export function getContractTermsByVendor(vendorId: string): ContractTerms | null
   };
 }
 
+export interface CachedSchema {
+  headerFingerprint: string;
+  detectedSchema: string;
+  dataType?: string;
+  confidence?: number;
+  usedCount: number;
+  lastUsed: string;
+}
+
+export function getCachedSchema(headerFingerprint: string): CachedSchema | null {
+  const db = getDb();
+  const row = db.query("SELECT * FROM schema_cache WHERE header_fingerprint = $fingerprint").get({ $fingerprint: headerFingerprint }) as Record<string, unknown> | null;
+  if (!row) return null;
+  return {
+    headerFingerprint: row.header_fingerprint as string,
+    detectedSchema: row.detected_schema as string,
+    dataType: row.data_type as string | undefined,
+    confidence: row.confidence as number | undefined,
+    usedCount: row.used_count as number,
+    lastUsed: row.last_used as string,
+  };
+}
+
+export function clearSchemaCache(): void {
+  const db = getDb();
+  db.run("DELETE FROM schema_cache");
+}
+
+export function getSchemaCacheCount(): number {
+  const db = getDb();
+  const row = db.query("SELECT COUNT(*) as count FROM schema_cache").get() as { count: number };
+  return row.count;
+}
+
+export function setCachedSchema(fingerprint: string, schema: string, dataType?: string, confidence?: number): void {
+  const db = getDb();
+  db.run(
+    `INSERT INTO schema_cache (header_fingerprint, detected_schema, data_type, confidence, used_count, last_used)
+     VALUES ($fingerprint, $schema, $dataType, $confidence, 1, datetime('now'))
+     ON CONFLICT(header_fingerprint) DO UPDATE SET
+       detected_schema = excluded.detected_schema,
+       data_type = excluded.data_type,
+       confidence = excluded.confidence,
+       used_count = used_count + 1,
+       last_used = datetime('now')`,
+    {
+      $fingerprint: fingerprint,
+      $schema: schema,
+      $dataType: dataType ?? null,
+      $confidence: confidence ?? null,
+    }
+  );
+}
+
+const ISO_CURRENCIES = new Set([
+  "AED","AFN","ALL","AMD","ANG","AOA","ARS","AUD","AWG","AZN","BAM","BBD","BDT","BGN","BHD","BIF","BMD","BND","BOB","BRL",
+  "BSD","BTN","BWP","BYN","BZD","CAD","CDF","CHF","CLP","CNY","COP","CRC","CUP","CVE","CZK","DJF","DKK","DOP","DZD","EGP",
+  "ERN","ETB","EUR","FJD","FKP","FOK","GBP","GEL","GGP","GHS","GIP","GMD","GNF","GTQ","GYD","HKD","HNL","HRK","HTG","HUF",
+  "IDR","ILS","IMP","INR","IQD","IRR","ISK","JEP","JMD","JOD","JPY","KES","KGS","KHR","KID","KMF","KRW","KWD","KYD","KZT",
+  "LAK","LBP","LKR","LRD","LSL","LYD","MAD","MDL","MGA","MKD","MMK","MNT","MOP","MRU","MUR","MVR","MWK","MXN","MYR","MZN",
+  "NAD","NGN","NIO","NOK","NPR","NZD","OMR","PAB","PEN","PGK","PHP","PKR","PLN","PYG","QAR","RON","RSD","RUB","RWF","SAR",
+  "SBD","SCR","SDG","SEK","SGD","SHP","SLL","SOS","SRD","SSP","STN","SYP","SZL","THB","TJS","TMT","TND","TOP","TRY","TTD",
+  "TVD","TWD","TZS","UAH","UGX","USD","UYU","UZS","VES","VND","VUV","WST","XAF","XCD","XDR","XOF","XPF","YER","ZAR","ZMW",
+]);
+
+export function getDominantCurrency(): string {
+  const db = getDb();
+  const rows = db.query(
+    "SELECT currency, COUNT(*) as cnt FROM financial_records WHERE currency IS NOT NULL AND currency != '' GROUP BY currency ORDER BY cnt DESC"
+  ).all() as Array<{ currency: string; cnt: number }>;
+  for (const row of rows) {
+    if (ISO_CURRENCIES.has(row.currency)) return row.currency;
+  }
+  return "INR";
+}
+
 export function getRecordCount(): number {
   const db = getDb();
   const row = db.query("SELECT COUNT(*) as count FROM financial_records").get() as { count: number };
@@ -354,6 +435,12 @@ export function updateVendorTrustScore(vendorId: string, delta: number): void {
   );
 }
 
+export function getRecordQualityFlagCount(flagName: string): number {
+  const db = getDb();
+  const row = db.query("SELECT COUNT(*) as count FROM financial_records WHERE raw LIKE $flagPattern").get({ $flagPattern: `%${flagName}%` }) as { count: number };
+  return row.count;
+}
+
 export function getRecordCountByType(type: string): number {
   const db = getDb();
   const row = db.query("SELECT COUNT(*) as count FROM financial_records WHERE type = $type").get({ $type: type }) as { count: number };
@@ -364,6 +451,66 @@ export function getHistoryDays(): number {
   const db = getDb();
   const row = db.query("SELECT (julianday(MAX(date)) - julianday(MIN(date))) as days FROM financial_records").get() as { days: number | null };
   return row.days ?? 0;
+}
+
+export interface AgentFpRate {
+  agentType: string;
+  resolved: number;
+  dismissed: number;
+  escalated: number;
+  total: number;
+  fpRate: number | null;
+  tpRate: number | null;
+}
+
+export function getFpRates(): AgentFpRate[] {
+  const db = getDb();
+  const rows = db.query(`
+    SELECT
+      f.agent_type,
+      fb.latest_action,
+      COUNT(DISTINCT f.id) as cnt
+    FROM findings f
+    JOIN (
+      SELECT
+        fb1.finding_id,
+        fb1.action as latest_action
+      FROM feedback fb1
+      INNER JOIN (
+        SELECT finding_id, MAX(created_at) as max_ts
+        FROM feedback
+        GROUP BY finding_id
+      ) fb2 ON fb1.finding_id = fb2.finding_id AND fb1.created_at = fb2.max_ts
+    ) fb ON f.id = fb.finding_id
+    GROUP BY f.agent_type, fb.latest_action
+    ORDER BY f.agent_type, fb.latest_action
+  `).all() as Array<{ agent_type: string; latest_action: string; cnt: number }>;
+
+  const agentMap = new Map<string, { resolved: number; dismissed: number; escalated: number }>();
+  for (const row of rows) {
+    let entry = agentMap.get(row.agent_type);
+    if (!entry) {
+      entry = { resolved: 0, dismissed: 0, escalated: 0 };
+      agentMap.set(row.agent_type, entry);
+    }
+    if (row.latest_action === "resolve") entry.resolved += row.cnt;
+    else if (row.latest_action === "dismiss") entry.dismissed += row.cnt;
+    else if (row.latest_action === "escalate") entry.escalated += row.cnt;
+  }
+
+  const result: AgentFpRate[] = [];
+  for (const [agentType, counts] of agentMap) {
+    const total = counts.resolved + counts.dismissed + counts.escalated;
+    result.push({
+      agentType,
+      ...counts,
+      total,
+      fpRate: total > 0 ? counts.dismissed / total : null,
+      tpRate: total > 0 ? (counts.resolved + counts.escalated) / total : null,
+    });
+  }
+
+  return result.sort((a, b) => a.agentType.localeCompare(b.agentType));
 }
 
 function rowToFinding(row: Record<string, unknown>): Finding {

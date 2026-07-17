@@ -1,6 +1,7 @@
 import fs from "fs";
 import path from "path";
 import { parse } from "csv-parse/sync";
+import { z } from "zod";
 import {
   SubscriptionRowSchema,
   TransactionRowSchema,
@@ -22,7 +23,7 @@ export interface ParseResult<T> {
   errors: ParseError[];
 }
 
-type CsvType = "subscriptions" | "transactions" | "expense-reports" | "committed-expenses" | "usage";
+type CsvType = "subscriptions" | "transactions" | "expense-reports" | "committed-expenses" | "usage" | "general-ledger";
 
 const SCHEMA_MAP: Record<CsvType, { schema: any; label: string }> = {
   subscriptions: { schema: SubscriptionRowSchema, label: "Subscriptions" },
@@ -30,6 +31,7 @@ const SCHEMA_MAP: Record<CsvType, { schema: any; label: string }> = {
   "expense-reports": { schema: ExpenseReportRowSchema, label: "Expense Reports" },
   "committed-expenses": { schema: CommittedExpenseRowSchema, label: "Committed Expenses" },
   usage: { schema: UsageRowSchema, label: "Usage" },
+  "general-ledger": { schema: z.any(), label: "General Ledger" },
 };
 
 export function inferCsvType(filename: string, headers: string[]): CsvType | null {
@@ -38,6 +40,7 @@ export function inferCsvType(filename: string, headers: string[]): CsvType | nul
 
   if (lower.includes("committed") || lower.includes("commitment") || headerSet.has("due_date")) return "committed-expenses";
   if (lower.includes("subscription") || (headerSet.has("vendor") && headerSet.has("monthly_amount"))) return "subscriptions";
+  if (headerSet.has("debit") && headerSet.has("credit") && headers.some((h) => h.toLowerCase().includes("account"))) return "general-ledger";
   if (lower.includes("transaction") || headerSet.has("vendor_name") || (headerSet.has("date") && headerSet.has("cleared"))) return "transactions";
   if (lower.includes("expense") || (headerSet.has("employee") && headerSet.has("category"))) return "expense-reports";
   if (lower.includes("usage") || (headerSet.has("employee_email") && headerSet.has("tool"))) return "usage";

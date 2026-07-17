@@ -18,6 +18,8 @@ export function initDb(workspaceDir: string): Database {
   db.exec("PRAGMA journal_mode = WAL");
   db.exec("PRAGMA foreign_keys = ON");
   db.exec(SCHEMA_SQL);
+  // Migrations
+  try { db.exec("ALTER TABLE findings ADD COLUMN recommendation TEXT"); } catch {}
   return db;
 }
 

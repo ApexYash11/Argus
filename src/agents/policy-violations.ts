@@ -1,14 +1,21 @@
 import { registerAgent } from "./supervisor";
-import type { Comparison } from "../model/types";
-import { getFinancialRecordsByType } from "../db/queries";
+import type { Comparison, FinancialRecord } from "../model/types";
+import { getFinancialRecordsByType, getDominantCurrency } from "../db/queries";
 import type { AppConfig } from "../model/types";
+import { extractQualityFlags, computeQualityPenalty } from "./nodes/score-confidence";
 
-const DEFAULT_PER_DIEM_LIMITS: Record<string, number> = {
-  meals: 3000,
-  travel: 10000,
-  "client-entertainment": 20000,
-  "office-supplies": 2000,
-};
+function defaultPerDiemLimits(currency: string): Record<string, number> {
+  if (currency === "USD") {
+    return { meals: 36, travel: 120, "client-entertainment": 240, "office-supplies": 24 };
+  }
+  if (currency === "EUR") {
+    return { meals: 30, travel: 100, "client-entertainment": 200, "office-supplies": 20 };
+  }
+  if (currency === "GBP") {
+    return { meals: 25, travel: 85, "client-entertainment": 170, "office-supplies": 17 };
+  }
+  return { meals: 3000, travel: 10000, "client-entertainment": 20000, "office-supplies": 2000 };
+}
 
 const DEFAULT_PROHIBITED_CATEGORIES = ["alcohol", "gambling", "personal"];
 
@@ -23,14 +30,20 @@ function parseExpenseFields(description: string): { category: string; employee: 
 
 registerAgent("policy-violations", {
   async classify(ctx) {
-    ctx.emit({ type: "step", agent: "policy-violations", message: "Checking expense policy compliance..." });
+    const expenses = getFinancialRecordsByType("expense");
+    if (expenses.length === 0) {
+      ctx.emit({ type: "agent_skipped", agent: "policy-violations", reason: "No expenses to check" });
+      ctx.state._skip = true;
+      return;
+    }
+    ctx.emit({ type: "step", agent: "policy-violations", message: `Found ${expenses.length} expenses to audit against policy` });
   },
 
   async retrieve(ctx) {
-    const expenses = getFinancialRecordsByType("expense");
-    const rawRecords = expenses.map((e) => {
-      try { return JSON.parse(e.raw); } catch { return null; }
-    }).filter(Boolean) as Record<string, unknown>[];
+    if (!ctx.state._cache) {
+      ctx.state._cache = { expenses: getFinancialRecordsByType("expense") };
+    }
+    const expenses = (ctx.state._cache as unknown as { expenses: FinancialRecord[] }).expenses;
 
     ctx.state.evidence = [
       { key: "expense_count", value: String(expenses.length), sourceDocId: "db" },
@@ -43,12 +56,13 @@ registerAgent("policy-violations", {
 
   async compare(ctx) {
     const comparisons: Comparison[] = [];
-    const expenses = getFinancialRecordsByType("expense");
+    const expenses = ((ctx.state._cache as unknown as { expenses: FinancialRecord[] })?.expenses ?? getFinancialRecordsByType("expense")) as FinancialRecord[];
 
     const config = (ctx as any).config as AppConfig | undefined;
     const policy = config?.policy;
 
-    const perDiemLimits = { ...DEFAULT_PER_DIEM_LIMITS, ...(policy?.perDiemLimits ?? {}) };
+    const companyCurrency = getDominantCurrency();
+    const perDiemLimits = { ...defaultPerDiemLimits(companyCurrency), ...(policy?.perDiemLimits ?? {}) };
     const prohibitedCategories = policy?.prohibitedCategories ?? DEFAULT_PROHIBITED_CATEGORIES;
     const maxWithoutReceipt = policy?.maxExpenseWithoutReceipt ?? DEFAULT_MAX_WITHOUT_RECEIPT;
     const preApprovalThreshold = policy?.preApprovalThreshold ?? 20000;
@@ -115,6 +129,11 @@ registerAgent("policy-violations", {
     const overLimitCount = cmpCount - prohibitedCount - receiptMissingCount;
     if (overLimitCount > 0) { score += Math.min(overLimitCount * 0.05, 0.1); reasons.push(`${overLimitCount} over-limit item(s)`); }
     if (cmpCount === 0) { score = 0; reasons.push("no violations found"); }
+
+    const allCached = Object.values(ctx.state._cache ?? {}).flat() as any[];
+    const qualityFlags = extractQualityFlags(allCached);
+    const penalty = computeQualityPenalty(qualityFlags);
+    score = Math.max(0, score - penalty);
 
     return {
       score: Math.round(Math.min(score, 0.95) * 100) / 100,

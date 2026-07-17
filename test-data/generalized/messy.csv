@@ -1,0 +1,32 @@
+TXN_DATE,VENDOR,REF_NO,AMOUNT,CATEGORY
+2024-01-05,AMAZON.COM,INV-001,"$1,200.00",Software
+2024-01-12,Amazon,PAY-101,"$850.50",AWS Hosting
+2024-03-15,amazon,INV-002,"$2,100.00",Software
+01/02/24,AMZN,PAY-102,"(500.00)",Cloud Services
+2024-02-20,Amazon Web Services,INV-003,"$3,400.00",Infrastructure
+15 Mar 2024,Google Cloud,INV-004,"$2,800.00",Hosting
+Mar 2024,Google Cloud,PAY-103,,Infrastructure
+2024-04-01,Google Cloud Platform,INV-005,"$2,800.00",Hosting
+2024-04-05,Microsoft Azure,INV-006,"$4,500.00",Cloud
+2024-04-10,Microsoft,PAY-104,"$4,500.00",Cloud
+2024-04-15,MS,INV-007,"$4,500.00",Azure Services
+
+2024-05-01,Slack Technologies,INV-008,"$1,800.00",Communications
+2024-05-05,Slack Corp,PAY-105,"$1,800.00",Communications
+2024-05-10,Slack,INV-009,"$1,800.00",Messaging
+2024-05-15,Atlassian,INV-010,"$2,400.00",Dev Tools
+2024-05-20,Atlassian,PAY-106,"$2,400.00",Jira
+2024-05-25,Confluence,INV-011,"$600.00",Knowledge Mgmt
+2024-05-30,DigitalOcean Inc,INV-012,"1.500,00",Hosting
+2024-06-01,DO,PAY-107,"$350.00",Infrastructure
+2024-06-05,DigitalOcean,INV-013,"$350.00",Infrastructure
+2024-06-10,AWS India Pvt Ltd,PAY-108,"$15,000.00",Infrastructure
+2024-06-15,Amazon Web Services India Pvt Ltd,INV-014,"$15,000.00",Infrastructure
+2024-06-20,Zoho Corporation,PAY-109,"$299.00",CRM
+
+2024-07-01,Razorpay,INV-015,"$1,200.00",Payments
+2024-07-05,Razorpay Payments,PAY-110,"$1,200.00",Gateway
+2024-07-10,Razorpay Payments Pvt Ltd,INV-016,"$1,200.00",Processing
+2024-07-15,Figma Inc,PAY-111,"$150.00",Design
+N/A,Figma Corp,INV-017,"N/A",Design
+2024-07-25,Notion Labs Inc,PAY-112,"$200.00",Productivity

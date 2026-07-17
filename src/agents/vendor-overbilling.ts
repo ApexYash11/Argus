@@ -1,9 +1,11 @@
 import { registerAgent } from "./supervisor";
-import type { Comparison, FinancialRecord } from "../model/types";
+import type { Comparison, FinancialRecord, ContractTerms } from "../model/types";
 import { getFinancialRecordsByType, getAllContractTerms } from "../db/queries";
+import { extractQualityFlags, computeQualityPenalty } from "./nodes/score-confidence";
+import { getYearMonth } from "../ingest/date-utils";
 
 function invoicePeriod(dateOrPeriod: string, frequency: string): string {
-  if (frequency === "monthly") return dateOrPeriod.slice(0, 7);
+  if (frequency === "monthly") return getYearMonth(dateOrPeriod);
   if (frequency === "quarterly") {
     const m = parseInt(dateOrPeriod.slice(5, 7), 10);
     const q = m <= 3 ? "Q1" : m <= 6 ? "Q2" : m <= 9 ? "Q3" : "Q4";
@@ -14,12 +16,23 @@ function invoicePeriod(dateOrPeriod: string, frequency: string): string {
 
 registerAgent("vendor-overbilling", {
   async classify(ctx) {
-    ctx.emit({ type: "step", agent: "vendor-overbilling", message: "Comparing invoices against contracted terms..." });
+    const invoices = getFinancialRecordsByType("invoice");
+    if (invoices.length === 0) {
+      ctx.emit({ type: "agent_skipped", agent: "vendor-overbilling", reason: "No invoices to check" });
+      ctx.state._skip = true;
+      return;
+    }
+    ctx.emit({ type: "step", agent: "vendor-overbilling", message: `Found ${invoices.length} invoices to compare against contracts` });
   },
 
   async retrieve(ctx) {
-    const invoices = getFinancialRecordsByType("invoice");
-    const contracts = getAllContractTerms();
+    if (!ctx.state._cache) {
+      ctx.state._cache = {
+        invoices: getFinancialRecordsByType("invoice"),
+        contracts: getAllContractTerms(),
+      };
+    }
+    const { invoices, contracts } = ctx.state._cache as unknown as { invoices: FinancialRecord[]; contracts: ContractTerms[] };
 
     ctx.state.evidence = [
       { key: "invoice_count", value: String(invoices.length), sourceDocId: "db" },
@@ -33,8 +46,7 @@ registerAgent("vendor-overbilling", {
 
   async compare(ctx) {
     const comparisons: Comparison[] = [];
-    const invoices = getFinancialRecordsByType("invoice");
-    const contracts = getAllContractTerms();
+    const { invoices, contracts } = (ctx.state._cache ?? { invoices: getFinancialRecordsByType("invoice"), contracts: getAllContractTerms() }) as unknown as { invoices: FinancialRecord[]; contracts: ContractTerms[] };
     const contractsByVendor = new Map(contracts.map((c) => [c.vendorId.toLowerCase(), c]));
 
     const invoicesByVendor = new Map<string, FinancialRecord[]>();
@@ -55,6 +67,7 @@ registerAgent("vendor-overbilling", {
         const periodBuckets = new Map<string, number>();
         for (const inv of invs) {
           const invPeriod = inv.periodStart ?? inv.date;
+          if (!invPeriod) continue;
           const period = invoicePeriod(invPeriod, freq);
           periodBuckets.set(period, (periodBuckets.get(period) ?? 0) + inv.amount);
         }
@@ -112,6 +125,11 @@ registerAgent("vendor-overbilling", {
     const noContractCount = freshCount - overbilledCount - escalationCount;
     if (noContractCount > 0) { score += 0.05; reasons.push(`${noContractCount} vendor(s) without contract`); }
     if (freshCount === 0) { score = 0; reasons.push("no vendors flagged"); }
+
+    const allCached = Object.values(ctx.state._cache ?? {}).flat() as any[];
+    const qualityFlags = extractQualityFlags(allCached);
+    const penalty = computeQualityPenalty(qualityFlags);
+    score = Math.max(0, score - penalty);
 
     return {
       score: Math.round(Math.min(score, 0.95) * 100) / 100,

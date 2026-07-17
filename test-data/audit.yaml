@@ -1,0 +1,9 @@
+# AI Spend Auditor Configuration
+company: "My Company"
+currency: INR
+minRunwayMonths: 8
+minOperatingReserve: 0
+maxIterations: 5
+confidenceFloor: 0.7
+scratchpad:
+  retentionCount: 30
