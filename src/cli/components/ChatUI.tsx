@@ -4,6 +4,7 @@ import Spinner from "ink-spinner";
 import TextInput from "ink-text-input";
 import type { ChatEvent } from "../../model/types";
 import { handleChatMessage } from "../commands/chat";
+import type { ChatContext } from "../commands/chat";
 import { BANNER, C, SYM } from "../theme";
 
 const STATUS_BAR = "\u2578ARGUS\u257A  chat mode  \u00B7  type \"exit\" to quit  \u00B7  Esc to cancel";
@@ -16,12 +17,11 @@ interface Message {
   isUser: boolean;
 }
 
-export default function ChatUI({ cwd }: { cwd: string }) {
+export default function ChatUI({ cwd, chatCtx }: { cwd: string; chatCtx: ChatContext }) {
   const { exit } = useApp();
   const [input, setInput] = useState("");
   const [processing, setProcessing] = useState(false);
   const [statusText, setStatusText] = useState("");
-  const [visibleLines, setVisibleLines] = useState(20);
   const [queueCount, setQueueCount] = useState(0);
   const [, forceRender] = useState(0);
 
@@ -38,8 +38,6 @@ export default function ChatUI({ cwd }: { cwd: string }) {
 
   useEffect(() => {
     setInputRef.current = setInput;
-    const rows = process.stdout.rows || 24;
-    setVisibleLines(Math.max(5, rows - RESERVED_LINES));
     const msgs: Message[] = BANNER.map((line) => ({
       id: msgId.current++, type: "agent_thinking" as const, text: line, isUser: false,
     }));
@@ -126,7 +124,7 @@ export default function ChatUI({ cwd }: { cwd: string }) {
     toolMsgMap.current.clear();
     const controller = new AbortController();
     abortRef.current = controller;
-    const gen = handleChatMessage(query, cwd, controller.signal);
+    const gen = handleChatMessage(query, chatCtx, controller.signal);
     let llmActive = false;
 
     try {
@@ -237,7 +235,7 @@ export default function ChatUI({ cwd }: { cwd: string }) {
     processNext();
   }, [addMessage, doProcess, processNext, exit]);
 
-  const scrollMsgs = messagesRef.current.slice(-visibleLines);
+  const scrollMsgs = messagesRef.current;
 
   function msgColor(msg: Message): string | undefined {
     if (msg.isUser) return C.blue;

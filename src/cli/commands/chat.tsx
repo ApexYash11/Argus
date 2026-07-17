@@ -1,13 +1,19 @@
 import React from "react";
+import path from "path";
+import fs from "fs";
 import type { ChatEvent, FinancialEvent } from "../../model/types";
 import { runSupervisor } from "../../agents/supervisor";
 import { ingestFile } from "./ingest";
 import { getFindings, getFindingById, getRecordCount, getAllVendors } from "../../db/queries";
 import { groqStream } from "../../llm/groq";
 
+export interface ChatContext {
+  cwd: string;
+}
+
 export async function* handleChatMessage(
   input: string,
-  cwd: string,
+  ctx: ChatContext,
   signal?: AbortSignal
 ): AsyncGenerator<ChatEvent> {
   const lower = input.trim().toLowerCase();
@@ -36,7 +42,7 @@ export async function* handleChatMessage(
           type: "daily_tick",
           timestamp: new Date().toISOString(),
         };
-        const stream = await runSupervisor(cwd, trigger, undefined, undefined, signal);
+        const stream = await runSupervisor(ctx.cwd, trigger, undefined, undefined, signal);
         for await (const event of stream) {
           switch (event.type) {
             case "agent_start":
@@ -56,10 +62,29 @@ export async function* handleChatMessage(
         yield { type: "done", durationMs: 0 };
         return;
       }
+      case "cd": {
+        const target = parts.slice(1).join(" ").trim();
+        if (!target) {
+          yield { type: "agent_thinking", message: `Current workspace: ${ctx.cwd}` };
+          yield { type: "done", durationMs: 0 };
+          return;
+        }
+        const resolved = path.resolve(ctx.cwd, target);
+        if (!fs.existsSync(resolved)) {
+          yield { type: "agent_thinking", message: `Directory not found: ${resolved}` };
+          yield { type: "done", durationMs: 0 };
+          return;
+        }
+        ctx.cwd = resolved;
+        yield { type: "agent_thinking", message: `Switched to ${resolved}` };
+        yield { type: "done", durationMs: 0 };
+        return;
+      }
       case "status": {
         const vendors = getAllVendors();
         yield { type: "agent_thinking", message: `Records ingested: ${recCount}` };
         yield { type: "agent_thinking", message: `Vendors tracked: ${vendors.length}` };
+        yield { type: "agent_thinking", message: `Workspace: ${ctx.cwd}` };
         yield { type: "done", durationMs: 0 };
         return;
       }
@@ -75,6 +100,7 @@ export async function* handleChatMessage(
             { name: "/findings", description: "List all findings" },
             { name: "/investigate", description: "Run investigation agents" },
             { name: "/status", description: "Show workspace status" },
+            { name: "/cd <path>", description: "Switch workspace directory" },
             { name: "/clear", description: "Clear chat history" },
             { name: "/help", description: "Show this help" },
             { name: "findings", description: "List all findings" },
@@ -104,7 +130,7 @@ export async function* handleChatMessage(
       type: "daily_tick",
       timestamp: new Date().toISOString(),
     };
-    const stream = await runSupervisor(cwd, trigger, undefined, undefined, signal);
+    const stream = await runSupervisor(ctx.cwd, trigger, undefined, undefined, signal);
     for await (const event of stream) {
       switch (event.type) {
         case "agent_start":
@@ -170,7 +196,7 @@ export async function* handleChatMessage(
       return;
     }
     try {
-      const stream = await ingestFile(cwd, filePath);
+      const stream = await ingestFile(ctx.cwd, filePath);
       for await (const event of stream) {
         if (signal?.aborted) break;
         if (event.type === "step") {
@@ -190,13 +216,13 @@ export async function* handleChatMessage(
 
   const vendors = getAllVendors();
   const context = [
-    `Current workspace: ${cwd}`,
+    `Current workspace: ${ctx.cwd}`,
     `Records ingested: ${recCount}`,
     `Vendors tracked: ${vendors.length}`,
   ].join("\n");
   const systemPrompt = [
     "You are Argus, an autonomous financial investigator.",
-    `The user's financial workspace is at ${cwd}.`,
+    `The user's financial workspace is at ${ctx.cwd}.`,
     "Answer questions about their spending, findings, and",
     "financial data. Be concise and direct.",
   ].join(" ");
@@ -214,6 +240,7 @@ export async function* handleChatMessage(
 export async function startChat(cwd: string): Promise<void> {
   const { render } = await import("ink");
   const { default: ChatUI } = await import("../components/ChatUI.js");
-  const { waitUntilExit } = render(<ChatUI cwd={cwd} />);
+  const ctx: ChatContext = { cwd };
+  const { waitUntilExit } = render(<ChatUI cwd={cwd} chatCtx={ctx} />);
   await waitUntilExit;
 }
