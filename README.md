@@ -27,10 +27,10 @@ bun run compile          # outputs dist/argus-linux
 # Initialize workspace
 bun run src/cli/index.tsx init --company "Acme Corp"
 
-# Or if the binary is on PATH:
-# audit init --company "Acme Corp"
+# Fastest path: drop a folder of exports, classify + ingest + investigate in one go
+audit audit ./your-exports/
 
-# Ingest financial data
+# Or ingest files individually (advanced)
 audit ingest transactions.csv
 audit ingest subscriptions.csv
 audit ingest expense-reports.csv

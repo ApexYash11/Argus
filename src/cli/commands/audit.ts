@@ -112,8 +112,9 @@ export async function* audit(
   yield { type: "step", agent: "audit", message: `Found ${candidates.length} candidate file(s)` };
 
   const classified: FileClassification[] = [];
-  for (const fp of candidates) {
-    yield { type: "step", agent: "audit", message: `Classifying ${path.basename(fp)}...` };
+  for (let i = 0; i < candidates.length; i++) {
+    const fp = candidates[i]!;
+    yield { type: "step", agent: "audit", message: `[${i + 1}/${candidates.length}] Classifying ${path.basename(fp)}...` };
     try {
       const result = await classifyFile(fp, options.forceRefresh);
       classified.push(result);
@@ -153,8 +154,9 @@ export async function* audit(
 
   let ingestCount = 0;
   const qualityFlagTotals = new Map<string, number>();
-  for (const c of knownFiles) {
-    yield { type: "step", agent: "audit", message: `Ingesting ${path.basename(c.filePath)}...` };
+  for (let i = 0; i < knownFiles.length; i++) {
+    const c = knownFiles[i]!;
+    yield { type: "step", agent: "audit", message: `[${i + 1}/${knownFiles.length}] Ingesting ${path.basename(c.filePath)}...` };
     try {
       const ingestStream = await ingestFile(resolvedPath, c.filePath);
       for await (const event of ingestStream) {
@@ -216,5 +218,10 @@ export async function* audit(
   yield { type: "step", agent: "audit", message: `Elapsed time:      ${elapsed}` };
   const cacheStats = getCacheStats();
   yield { type: "step", agent: "audit", message: `Schema cache:      ${cacheStats.hits} hit(s), ${cacheStats.misses} miss(es)` };
+  yield { type: "step", agent: "audit", message: "" };
+  yield { type: "step", agent: "audit", message: "Next steps:" };
+  yield { type: "step", agent: "audit", message: "  argus report --share   forwardable HTML report" };
+  yield { type: "step", agent: "audit", message: "  argus digest           weekly markdown summary" };
+  yield { type: "step", agent: "audit", message: "  argus status           system health + spend & burn" };
   yield { type: "done", totalFindings, durationMs: elapsedMs };
 }

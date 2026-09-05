@@ -30,6 +30,8 @@ Invoke-Step "Step 3: Run investigation" { & $AUDIT investigate }
 Invoke-Step "Step 4: Browse findings"   { & $AUDIT findings }
 Invoke-Step "Step 5: System status"     { & $AUDIT status }
 Invoke-Step "Step 6: Generate report"   { & $AUDIT report }
+Invoke-Step "Step 7: Shareable report"  { & $AUDIT report --share }
+Invoke-Step "Step 8: Weekly digest"     { & $AUDIT digest }
 
 Write-Host "╔══════════════════════════════════════════════╗" -ForegroundColor Cyan
 Write-Host "║   Demo complete                              ║" -ForegroundColor Cyan
