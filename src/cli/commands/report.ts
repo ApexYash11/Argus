@@ -1,4 +1,4 @@
-import { getFindings, getRecordCount, getFpRates } from "../../db/queries";
+import { getFindings, getRecordCount, getFpRates, getDominantCurrency, getAllVendors, getDateRange } from "../../db/queries";
 import { getCacheStats } from "../../ingest/schema-detector";
 
 export interface ReportOutput {
@@ -11,7 +11,11 @@ export interface ReportOutput {
     resolved: number;
     dismissed: number;
     totalImpact: number;
+    moneyFound: number;
+    currency: string;
     recordCount: number;
+    vendorCount: number;
+    dateRange: { min: string; max: string } | null;
   };
   findings: Array<{
     id: string;
@@ -41,6 +45,9 @@ export async function generateReport(period?: string): Promise<ReportOutput> {
   const openFindings = findings.filter((f) => f.status === "open");
   const criticalFindings = findings.filter((f) => f.severity === "critical");
   const totalImpact = findings.reduce((sum, f) => sum + (f.impactAmount ?? 0), 0);
+  const moneyFound = findings
+    .filter((f) => f.status === "open" || f.status === "resolved")
+    .reduce((sum, f) => sum + (f.impactAmount ?? 0), 0);
 
   return {
     period: period ?? "all-time",
@@ -52,7 +59,11 @@ export async function generateReport(period?: string): Promise<ReportOutput> {
       resolved: findings.filter((f) => f.status === "resolved").length,
       dismissed: findings.filter((f) => f.status === "dismissed").length,
       totalImpact,
+      moneyFound,
+      currency: getDominantCurrency(),
       recordCount: getRecordCount(),
+      vendorCount: getAllVendors().length,
+      dateRange: getDateRange(),
     },
     findings: findings.map((f) => ({
       id: f.id,
