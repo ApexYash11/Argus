@@ -1,5 +1,6 @@
 import { groqComplete } from "../llm/groq";
 import { localComplete } from "../llm/local-fallback";
+import { openrouterComplete } from "../llm/openrouter";
 
 export interface LLMMessage {
   role: "system" | "user" | "assistant" | "tool";
@@ -39,6 +40,18 @@ export class LocalProvider implements LLMProvider {
   }
 }
 
+export class OpenRouterProvider implements LLMProvider {
+  name = "openrouter";
+  constructor(private model?: string) {}
+  async complete(messages: LLMMessage[]): Promise<string> {
+    const { prompt, system } = flatten(messages);
+    const res = await openrouterComplete(prompt, system, this.model ? { model: this.model } : undefined);
+    return res.content;
+  }
+}
+
 export function pickProvider(): LLMProvider {
-  return process.env.GROQ_API_KEY ? new GroqProvider() : new LocalProvider();
+  if (process.env.OPENROUTER_API_KEY) return new OpenRouterProvider();
+  if (process.env.GROQ_API_KEY) return new GroqProvider();
+  return new LocalProvider();
 }
