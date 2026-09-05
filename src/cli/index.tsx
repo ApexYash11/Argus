@@ -54,7 +54,7 @@ const cli = meow(
     audit [path] [--dry-run]       Discover, classify, ingest, and investigate (main verb)
     explain <finding-id>           Deep-dive a finding
     feedback <finding-id>          Submit review action
-    report [--period]              Generate reports
+    report [--period] [--share]    Generate reports
     status [--fp-rate]             System health and agent FP/TP rates
     config                         Workspace configuration
     chat                           Interactive chat mode
@@ -85,6 +85,9 @@ const cli = meow(
       trace: { type: "boolean", default: false },
       export: { type: "string" },
       period: { type: "string" },
+      share: { type: "boolean", default: false },
+      open: { type: "boolean", default: false },
+      out: { type: "string" },
       resolve: { type: "string" },
       dismiss: { type: "string" },
       escalate: { type: "string" },
@@ -266,14 +269,27 @@ async function main() {
       const wd = wsDir || cwd;
       if (!ensureDb(wd)) { console.log("No workspace found. Run `argus init` first."); break; }
       const report = await generateReport(flags.period);
-      console.log(`\n  Report \u2014 ${report.period}`);
-      console.log(`  ${"\u2500".repeat(40)}`);
+      console.log(`\n  Report — ${report.period}`);
+      console.log(`  ${"─".repeat(40)}`);
       console.log(`  Total findings:  ${report.summary.total}`);
       console.log(`  Open:            ${report.summary.open}`);
       console.log(`  Critical:        ${report.summary.critical}`);
       console.log(`  Resolved:        ${report.summary.resolved}`);
       console.log(`  Dismissed:       ${report.summary.dismissed}`);
-      console.log(`  Total impact:    ${report.summary.totalImpact.toLocaleString()}`);
+      console.log(`  Total impact:    ${report.summary.totalImpact.toLocaleString()} ${report.summary.currency}`);
+      console.log(`  Recoverable:     ${report.summary.moneyFound.toLocaleString()} ${report.summary.currency} (open + resolved)`);
+      if (flags.share) {
+        const { writeShareReport } = await import("./commands/share");
+        const outPath = await writeShareReport(wd, report, { out: flags.out as string | undefined });
+        console.log(`  Shared:          ${outPath}`);
+        if (flags.open) {
+          try {
+            const { exec } = await import("child_process");
+            const cmd = process.platform === "win32" ? `start "" "${outPath}"` : process.platform === "darwin" ? `open "${outPath}"` : `xdg-open "${outPath}"`;
+            exec(cmd);
+          } catch { console.log("  (could not auto-open browser)"); }
+        }
+      }
       break;
     }
 
