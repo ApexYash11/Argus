@@ -13,12 +13,19 @@ git clone <repo>
 cd argus
 bun install
 
-# Standalone binary (no Bun required at runtime)
-bun run compile          # outputs dist/argus-linux
-./dist/argus-linux --help
+# Make `argus` available everywhere (uses your Bun runtime)
+bun install --global .
+argus --help
+argus init --company "Acme Corp"
+```
 
-# Or add to PATH for bare `audit` commands:
-# export PATH="$PWD/dist:$PATH"
+Alternative: standalone binary (no Bun required at runtime, CSV/XLSX
+workflows; scanned-PDF OCR needs the Bun runtime path above):
+
+```bash
+bun run compile:win   # dist/argus.exe (Windows)
+bun run compile       # dist/argus-linux (Linux)
+bun run compile:mac   # dist/argus-mac (macOS arm64)
 ```
 
 ## Quickstart
