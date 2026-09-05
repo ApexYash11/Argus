@@ -7,9 +7,17 @@ export interface LLMResponse {
 
 const LLM_TIMEOUT = 60_000;
 
+// Free-model IDs churn often; `openrouter/free` auto-routes to an available
+// free model. Pin via OPENROUTER_MODEL env (e.g. "qwen/qwen3-next-80b-a3b-instruct:free").
+export function resolveOpenRouterModel(): string {
+  const m = (process.env.OPENROUTER_MODEL ?? "").trim();
+  return m.length > 0 ? m : "openrouter/free";
+}
+
 export async function openrouterComplete(
   prompt: string,
-  _systemPrompt?: string
+  _systemPrompt?: string,
+  opts?: { model?: string }
 ): Promise<LLMResponse> {
   const apiKey = process.env.OPENROUTER_API_KEY;
   if (!apiKey) {
@@ -30,7 +38,7 @@ export async function openrouterComplete(
       },
       signal: controller.signal,
       body: JSON.stringify({
-        model: "poolside/laguna-xs.2:free",
+        model: opts?.model ?? resolveOpenRouterModel(),
         messages: [
           { role: "system", content: _systemPrompt ?? "You are a financial investigation agent generating structured findings." },
           { role: "user", content: prompt },
@@ -63,7 +71,8 @@ export async function openrouterComplete(
 export async function* openrouterStream(
   prompt: string,
   systemPrompt?: string,
-  signal?: AbortSignal
+  signal?: AbortSignal,
+  opts?: { model?: string }
 ): AsyncGenerator<LLMChunk> {
   const apiKey = process.env.OPENROUTER_API_KEY;
   if (!apiKey) {
@@ -85,7 +94,7 @@ export async function* openrouterStream(
       },
       signal,
       body: JSON.stringify({
-        model: "poolside/laguna-xs.2:free",
+        model: opts?.model ?? resolveOpenRouterModel(),
         stream: true,
         messages: [
           { role: "system", content: systemPrompt ?? "You are a financial investigation agent." },
