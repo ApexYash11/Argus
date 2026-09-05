@@ -54,6 +54,14 @@ echo "── Step 6: Generate report ──"
 $AUDIT report
 echo ""
 
+# Step 7: Shareable HTML report + digest
+echo "── Step 7: Shareable report ──"
+$AUDIT report --share
+echo ""
+echo "── Step 8: Weekly digest ──"
+$AUDIT digest
+echo ""
+
 echo "╔══════════════════════════════════════════════╗"
 echo "║   Demo complete                              ║"
 echo "╚══════════════════════════════════════════════╝"
