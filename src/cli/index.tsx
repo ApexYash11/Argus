@@ -258,6 +258,7 @@ async function main() {
           vendorCount: status.vendorCount,
           agents: status.agents,
           dataSources: status.dataSources,
+          spend: (status as { spend?: unknown }).spend,
         }} />
       );
       unmount();
