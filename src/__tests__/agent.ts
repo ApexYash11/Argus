@@ -93,6 +93,24 @@ async function main() {
   const rows = queryReadOnly("SELECT id FROM findings");
   assert(Array.isArray(rows), "SELECT allowed against workspace DB");
 
+  // Streaming provider: tokens flow, then final assembles
+  const streamProvider: LLMProvider = {
+    name: "stream-stub",
+    async complete() { throw new Error("should prefer stream"); },
+    async *stream() {
+      yield "FINAL: ";
+      yield "streamed answer.";
+    },
+  };
+  const seen: string[] = [];
+  let streamFinal = "";
+  for await (const ev of runAgent("hi", { cwd: "." }, { registry, provider: streamProvider })) {
+    if (ev.type === "token") seen.push(ev.text);
+    if (ev.type === "final") streamFinal = ev.text;
+  }
+  assert(seen.join("") === "FINAL: streamed answer.", "token events carry reply");
+  assert(streamFinal === "streamed answer.", "final assembled from stream");
+
   console.log(`\n=== Results: ${passed} passed, ${failed} failed ===`);
   if (failed > 0) process.exit(1);
 }

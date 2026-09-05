@@ -6,6 +6,7 @@ export const MAX_AGENT_ITERATIONS = 5;
 
 export type AgentEvent =
   | { type: "thinking"; message: string }
+  | { type: "token"; text: string }
   | { type: "tool_start"; tool: string; args: string }
   | { type: "tool_end"; tool: string; summary: string }
   | { type: "final"; text: string }
@@ -22,9 +23,13 @@ const TOOL_CONTRACT = `Reply with EXACTLY one of:
 \`\`\`tool
 {"name": "<tool>", "args": {...}}
 \`\`\`
+Example: \`\`\`tool {"name": "run_investigation", "args": {"agent": "anomaly-detection"}} \`\`\`
 2. The final answer:
 FINAL: <answer>
-Never do both. Never invent tool names.`;
+Rules: never do both. Never invent tool names. No chatter outside the block
+or the FINAL line — any extra text is shown to the user verbatim. When the
+user asks for analysis, prefer calling run_investigation or list_findings
+first, then summarize. End findings summaries with one suggested next step.`;
 
 export function buildSystemPrompt(registry: ToolRegistry, ctx: ToolContext): string {
   return [
@@ -76,12 +81,26 @@ export async function* runAgent(
     }
     yield { type: "thinking", message: i === 0 ? "Planning which tools to use..." : `Follow-up step ${i + 1}...` };
 
+    const fullMessages = [
+      { role: "system", content: buildSystemPrompt(registry, ctx) },
+      ...history,
+    ] as Parameters<LLMProvider["complete"]>[0];
+
     let reply: string;
     try {
-      reply = await provider.complete([
-        { role: "system", content: buildSystemPrompt(registry, ctx) },
-        ...history,
-      ]);
+      if (provider.stream) {
+        const parts: string[] = [];
+        for await (const token of provider.stream(fullMessages, ctx.signal)) {
+          parts.push(token);
+          yield { type: "token", text: token };
+        }
+        reply = parts.join("");
+        if (!reply) {
+          reply = await provider.complete(fullMessages);
+        }
+      } else {
+        reply = await provider.complete(fullMessages);
+      }
     } catch (err: any) {
       yield { type: "final", text: `LLM error: ${err?.message ?? err}` };
       break;

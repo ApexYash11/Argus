@@ -224,17 +224,23 @@ export async function* handleChatMessage(
   // get_status, run_investigation) over up to 5 iterations.
   const { runAgent } = await import("../../agent/agent");
   const toolCtx = { cwd: ctx.cwd, signal };
+  let toolSeq = 0;
+  let activeToolCallId = "";
   for await (const event of runAgent(`${context}\n\nUser: ${input}`, toolCtx)) {
     if (signal?.aborted) break;
     switch (event.type) {
       case "thinking":
         yield { type: "agent_thinking", message: event.message };
         break;
+      case "token":
+        yield { type: "llm_chunk", text: event.text };
+        break;
       case "tool_start":
-        yield { type: "tool_start", tool: event.tool, args: event.args, toolCallId: `${event.tool}-${Date.now()}` };
+        activeToolCallId = `tool-${toolSeq++}`;
+        yield { type: "tool_start", tool: event.tool, args: event.args, toolCallId: activeToolCallId };
         break;
       case "tool_end":
-        yield { type: "tool_end", tool: event.tool, summary: event.summary, durationMs: 0, toolCallId: `${event.tool}-last` };
+        yield { type: "tool_end", tool: event.tool, summary: event.summary, durationMs: 0, toolCallId: activeToolCallId };
         break;
       case "final":
         yield { type: "llm_done", fullText: event.text };

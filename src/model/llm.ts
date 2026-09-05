@@ -1,6 +1,6 @@
-import { groqComplete } from "../llm/groq";
+import { groqComplete, groqStream } from "../llm/groq";
 import { localComplete } from "../llm/local-fallback";
-import { openrouterComplete } from "../llm/openrouter";
+import { openrouterComplete, openrouterStream } from "../llm/openrouter";
 
 export interface LLMMessage {
   role: "system" | "user" | "assistant" | "tool";
@@ -11,6 +11,8 @@ export interface LLMMessage {
 export interface LLMProvider {
   name: string;
   complete(messages: LLMMessage[]): Promise<string>;
+  /** Token streaming. Absent = caller falls back to complete(). */
+  stream?(messages: LLMMessage[], signal?: AbortSignal): AsyncGenerator<string>;
 }
 
 function flatten(messages: LLMMessage[]): { prompt: string; system?: string } {
@@ -28,6 +30,12 @@ export class GroqProvider implements LLMProvider {
     const { prompt, system } = flatten(messages);
     const res = await groqComplete(prompt, system);
     return res.content;
+  }
+  async *stream(messages: LLMMessage[], signal?: AbortSignal): AsyncGenerator<string> {
+    const { prompt, system } = flatten(messages);
+    for await (const chunk of groqStream(prompt, system, signal)) {
+      if (chunk.type === "token") yield chunk.text;
+    }
   }
 }
 
@@ -47,6 +55,12 @@ export class OpenRouterProvider implements LLMProvider {
     const { prompt, system } = flatten(messages);
     const res = await openrouterComplete(prompt, system, this.model ? { model: this.model } : undefined);
     return res.content;
+  }
+  async *stream(messages: LLMMessage[], signal?: AbortSignal): AsyncGenerator<string> {
+    const { prompt, system } = flatten(messages);
+    for await (const chunk of openrouterStream(prompt, system, signal, this.model ? { model: this.model } : undefined)) {
+      if (chunk.type === "token") yield chunk.text;
+    }
   }
 }
 
