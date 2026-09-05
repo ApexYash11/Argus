@@ -427,6 +427,19 @@ export function getRecordCount(): number {
   return row.count;
 }
 
+const READONLY_SQL = /^\s*select\b/i;
+const FORBIDDEN_SQL = /;\s*\S|--|insert\b|update\b|delete\b|drop\b|alter\b|create\b|attach\b|pragma\b/i;
+const MAX_READONLY_ROWS = 50;
+
+/** Safe read-only SQL primitive for agent tools. SELECT-only, single statement, capped rows. */
+export function queryReadOnly(sql: string): Record<string, unknown>[] {
+  if (!READONLY_SQL.test(sql)) throw new Error("Only SELECT queries are allowed.");
+  if (FORBIDDEN_SQL.test(sql)) throw new Error("Query contains forbidden keywords or multiple statements.");
+  const db = getDb();
+  const rows = db.query(`${sql} LIMIT ${MAX_READONLY_ROWS}`).all() as Record<string, unknown>[];
+  return rows;
+}
+
 export function updateVendorTrustScore(vendorId: string, delta: number): void {
   const db = getDb();
   db.run(
