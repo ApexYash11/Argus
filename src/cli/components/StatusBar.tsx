@@ -13,14 +13,27 @@ interface DataSourceInfo {
   recordCount: number;
 }
 
+interface SpendOverview {
+  ok: boolean;
+  reason?: string;
+  currency?: string;
+  avgMonthlyBurn?: number;
+  monthCount?: number;
+  lastMonthTotal?: number;
+  lastMonthLabel?: string;
+  trendPct?: number;
+  committedTotal?: number;
+}
+
 interface Props {
   recordCount: number;
   vendorCount: number;
   agents: AgentStatus[];
   dataSources: DataSourceInfo[];
+  spend?: SpendOverview;
 }
 
-export default function StatusBar({ recordCount, vendorCount, agents, dataSources }: Props) {
+export default function StatusBar({ recordCount, vendorCount, agents, dataSources, spend }: Props) {
   const readyCount = agents.filter((a) => a.ready).length;
   const totalAgents = agents.length;
 
@@ -53,6 +66,35 @@ export default function StatusBar({ recordCount, vendorCount, agents, dataSource
           <Text color="#888"> ({ds.recordCount} records)</Text>
         </Box>
       ))}
+
+      <Box marginTop={1}>
+        <Text bold underline>Spend &amp; Burn{spend?.currency ? ` (${spend.currency})` : ""}</Text>
+      </Box>
+      {!spend || !spend.ok ? (
+        <Box marginLeft={1}>
+          <Text color="#888">{spend?.reason ?? "No spend history yet."}</Text>
+        </Box>
+      ) : (
+        <Box flexDirection="column" marginLeft={1}>
+          <Box>
+            <Text>Avg burn: </Text>
+            <Text bold>{(spend.avgMonthlyBurn ?? 0).toLocaleString()}/mo</Text>
+            <Text color="#888"> ({spend.monthCount} complete months)</Text>
+          </Box>
+          <Box>
+            <Text>Last month: </Text>
+            <Text bold>{(spend.lastMonthTotal ?? 0).toLocaleString()} ({spend.lastMonthLabel})</Text>
+            <Text> </Text>
+            <Text color={(spend.trendPct ?? 0) > 0 ? "#ef4444" : "#22c55e"}>
+              {(spend.trendPct ?? 0) > 0 ? "+" : ""}{spend.trendPct}% vs avg
+            </Text>
+          </Box>
+          <Box>
+            <Text>Committed upcoming: </Text>
+            <Text bold>{(spend.committedTotal ?? 0).toLocaleString()}</Text>
+          </Box>
+        </Box>
+      )}
 
       <Box marginTop={1}>
         <Text bold underline>Agents</Text>

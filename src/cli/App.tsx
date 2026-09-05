@@ -66,6 +66,7 @@ export default function App({ command, props }: AppProps) {
           vendorCount={(props?.vendorCount as number) ?? 0}
           agents={(props?.agents as AgentStatus[]) ?? []}
           dataSources={(props?.dataSources as { name: string; recordCount: number }[]) ?? []}
+          spend={props?.spend as { ok: boolean; reason?: string; currency?: string; avgMonthlyBurn?: number; monthCount?: number; lastMonthTotal?: number; lastMonthLabel?: string; trendPct?: number; committedTotal?: number } | undefined}
         />
       );
     }

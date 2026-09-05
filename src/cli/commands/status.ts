@@ -1,5 +1,6 @@
 import { getActiveAgents } from "../../engine/activation";
-import { getRecordCount, getRecordCountByType, getAllVendors, getFpRates } from "../../db/queries";
+import { getRecordCount, getRecordCountByType, getAllVendors, getFpRates, getFinancialRecordsByType, getDominantCurrency } from "../../db/queries";
+import { computeBurn, type BurnOverview } from "../../engine/runway";
 
 const SOURCE_CONFIG: { name: string; type: string }[] = [
   { name: "subscriptions", type: "subscription" },
@@ -24,5 +25,12 @@ export async function getStatus() {
     recordCount,
     vendorCount: vendors.length,
     agents,
+    spend: {
+      ...computeBurn(
+        [...getFinancialRecordsByType("payment"), ...getFinancialRecordsByType("expense")],
+        getFinancialRecordsByType("commitment")
+      ),
+      currency: getDominantCurrency(),
+    } as BurnOverview & { currency: string },
   };
 }
