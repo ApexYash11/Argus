@@ -20,6 +20,7 @@ export function initDb(workspaceDir: string): Database {
   db.exec(SCHEMA_SQL);
   // Migrations
   try { db.exec("ALTER TABLE findings ADD COLUMN recommendation TEXT"); } catch {}
+  try { db.exec("ALTER TABLE calibration ADD COLUMN resolve_count INTEGER DEFAULT 0"); } catch {}
   return db;
 }
 

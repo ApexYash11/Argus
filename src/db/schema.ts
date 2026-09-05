@@ -82,6 +82,7 @@ CREATE TABLE IF NOT EXISTS calibration (
   vendor_id TEXT,
   threshold_override REAL,
   dismiss_count INTEGER DEFAULT 0,
+  resolve_count INTEGER DEFAULT 0,
   last_updated TEXT,
   PRIMARY KEY (workspace_id, agent_type, vendor_id)
 );

@@ -224,6 +224,7 @@ export function getCalibrationsForAgent(agentType: string): Calibration[] {
     vendorId: row.vendor_id as string | undefined,
     thresholdOverride: row.threshold_override as number | undefined,
     dismissCount: row.dismiss_count as number,
+    resolveCount: (row.resolve_count as number) ?? 0,
     lastUpdated: row.last_updated as string,
   }));
 }
@@ -240,6 +241,7 @@ export function getCalibration(agentType: string, vendorId?: string): Calibratio
     vendorId: row.vendor_id as string | undefined,
     thresholdOverride: row.threshold_override as number | undefined,
     dismissCount: row.dismiss_count as number,
+    resolveCount: (row.resolve_count as number) ?? 0,
     lastUpdated: row.last_updated as string,
   };
 }
@@ -247,11 +249,12 @@ export function getCalibration(agentType: string, vendorId?: string): Calibratio
 export function upsertCalibration(cal: Calibration): void {
   const db = getDb();
   db.run(
-    `INSERT INTO calibration (workspace_id, agent_type, vendor_id, threshold_override, dismiss_count, last_updated)
-     VALUES ($workspaceId, $agentType, $vendorId, $thresholdOverride, $dismissCount, $lastUpdated)
+    `INSERT INTO calibration (workspace_id, agent_type, vendor_id, threshold_override, dismiss_count, resolve_count, last_updated)
+     VALUES ($workspaceId, $agentType, $vendorId, $thresholdOverride, $dismissCount, $resolveCount, $lastUpdated)
      ON CONFLICT(workspace_id, agent_type, vendor_id) DO UPDATE SET
        threshold_override = excluded.threshold_override,
        dismiss_count = excluded.dismiss_count,
+       resolve_count = excluded.resolve_count,
        last_updated = excluded.last_updated`,
     {
       $workspaceId: cal.workspaceId,
@@ -259,6 +262,7 @@ export function upsertCalibration(cal: Calibration): void {
       $vendorId: cal.vendorId ?? null,
       $thresholdOverride: cal.thresholdOverride ?? null,
       $dismissCount: cal.dismissCount,
+      $resolveCount: cal.resolveCount ?? 0,
       $lastUpdated: cal.lastUpdated,
     }
   );
