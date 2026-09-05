@@ -1,4 +1,5 @@
 #!/usr/bin/env bun
+import "../ingest/dom-shim";
 import meow from "meow";
 import React from "react";
 import { render } from "ink";
@@ -119,7 +120,10 @@ async function main() {
 
     case "ingest": {
       const wd = wsDir || cwd;
-      ensureDb(wd);
+      if (!ensureDb(wd)) {
+        await initWorkspace(wd, flags.company || "My Company");
+        ensureDb(wd);
+      }
       const filePath = inputArgs[0];
       if (!filePath) {
         console.error("Error: specify a file path to ingest");
