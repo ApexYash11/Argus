@@ -5,7 +5,6 @@ import type { ChatEvent, FinancialEvent } from "../../model/types";
 import { runSupervisor } from "../../agents/supervisor";
 import { ingestFile } from "./ingest";
 import { getFindings, getFindingById, getRecordCount, getAllVendors } from "../../db/queries";
-import { groqStream } from "../../llm/groq";
 
 export interface ChatContext {
   cwd: string;
@@ -220,18 +219,28 @@ export async function* handleChatMessage(
     `Records ingested: ${recCount}`,
     `Vendors tracked: ${vendors.length}`,
   ].join("\n");
-  const systemPrompt = [
-    "You are Argus, an autonomous financial investigator.",
-    `The user's financial workspace is at ${ctx.cwd}.`,
-    "Answer questions about their spending, findings, and",
-    "financial data. Be concise and direct.",
-  ].join(" ");
 
-  for await (const chunk of groqStream(`${context}\n\nUser: ${input}`, systemPrompt, signal)) {
-    if (chunk.type === "token") {
-      yield { type: "llm_chunk", text: chunk.text };
-    } else {
-      yield { type: "llm_done", fullText: chunk.text };
+  // Agentic loop: LLM plans tool calls (list_findings, get_finding,
+  // get_status, run_investigation) over up to 5 iterations.
+  const { runAgent } = await import("../../agent/agent");
+  const toolCtx = { cwd: ctx.cwd, signal };
+  for await (const event of runAgent(`${context}\n\nUser: ${input}`, toolCtx)) {
+    if (signal?.aborted) break;
+    switch (event.type) {
+      case "thinking":
+        yield { type: "agent_thinking", message: event.message };
+        break;
+      case "tool_start":
+        yield { type: "tool_start", tool: event.tool, args: event.args, toolCallId: `${event.tool}-${Date.now()}` };
+        break;
+      case "tool_end":
+        yield { type: "tool_end", tool: event.tool, summary: event.summary, durationMs: 0, toolCallId: `${event.tool}-last` };
+        break;
+      case "final":
+        yield { type: "llm_done", fullText: event.text };
+        break;
+      case "done":
+        break;
     }
   }
   yield { type: "done", durationMs: 0 };
