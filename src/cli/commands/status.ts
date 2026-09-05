@@ -1,6 +1,13 @@
 import { getActiveAgents } from "../../engine/activation";
 import { getRecordCount, getRecordCountByType, getAllVendors, getFpRates, getFinancialRecordsByType, getDominantCurrency } from "../../db/queries";
 import { computeBurn, type BurnOverview } from "../../engine/runway";
+import { pickProvider, type LLMProvider } from "../../model/llm";
+
+export interface KeyStatus {
+  provider: string;
+  ready: boolean;
+  hint: string;
+}
 
 const SOURCE_CONFIG: { name: string; type: string }[] = [
   { name: "subscriptions", type: "subscription" },
@@ -32,5 +39,15 @@ export async function getStatus() {
       ),
       currency: getDominantCurrency(),
     } as BurnOverview & { currency: string },
+    llm: llmStatus(),
   };
+}
+
+function llmStatus(): KeyStatus {
+  const p = pickProvider() as LLMProvider;
+  const model = process.env.OPENROUTER_MODEL ?? (p.name === "openrouter" ? "openrouter/free" : p.name);
+  if (p.name === "local") {
+    return { provider: "local", ready: false, hint: "Set OPENROUTER_API_KEY in .env to enable LLM features (chat recommendations, schema assist)." };
+  }
+  return { provider: `${p.name} (${model})`, ready: true, hint: "LLM ready." };
 }
