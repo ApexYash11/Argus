@@ -1,7 +1,9 @@
 import fs from "fs";
 import path from "path";
-import type { AuditEvent, AgentType, FinancialEvent } from "../../model/types";
+import type { AuditEvent, AgentType, FinancialEvent, Severity } from "../../model/types";
 import { runSupervisor } from "../../agents/supervisor";
+import { notifyFinding, resolveWebhook, shouldAlert } from "../../alerts/webhook";
+import { getDominantCurrency } from "../../db/queries";
 
 let watcherStopped = false;
 let workspaceDir = process.cwd();
@@ -22,12 +24,20 @@ function writeWatcherStatus(state: string, findingsCount?: number): void {
   } catch { }
 }
 
+export interface InvestigateOptions {
+  webhookUrl?: string;
+  alertMin?: Severity;
+}
+
 export async function investigate(
   cwd: string,
   type?: AgentType,
-  watch?: boolean
+  watch?: boolean,
+  opts?: InvestigateOptions
 ): Promise<AsyncGenerator<AuditEvent>> {
   workspaceDir = cwd;
+  const webhookUrl = resolveWebhook(opts?.webhookUrl);
+  const alertMin: Severity = opts?.alertMin ?? "high";
   async function* gen(): AsyncGenerator<AuditEvent> {
     const trigger: FinancialEvent = {
       type: "daily_tick",
@@ -40,7 +50,17 @@ export async function investigate(
       const stream = await runSupervisor(cwd, trigger, type);
       for await (const event of stream) {
         yield event;
-        if (event.type === "finding") cycleFindings++;
+        if (event.type === "finding") {
+          cycleFindings++;
+          if (webhookUrl && shouldAlert(event.finding.severity, alertMin)) {
+            const err = await notifyFinding(webhookUrl, event.finding, getDominantCurrency());
+            if (err) {
+              yield { type: "step", agent: "investigate", message: `Alert failed for ${event.finding.id}: ${err}` };
+            } else {
+              yield { type: "step", agent: "investigate", message: `Alert sent for ${event.finding.id}` };
+            }
+          }
+        }
         if (event.type === "done") writeWatcherStatus("idle", cycleFindings);
       }
     };

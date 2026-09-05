@@ -49,12 +49,13 @@ const cli = meow(
   Commands
     init                           Initialize workspace
     ingest <path>                  Ingest financial data
-    investigate [--type] [--watch] Run investigation engine
+    investigate [--type] [--watch] [--webhook URL] [--alert-min high] Run investigation engine
     findings [--status] [--type]   Browse findings
     audit [path] [--dry-run]       Discover, classify, ingest, and investigate (main verb)
     explain <finding-id>           Deep-dive a finding
     feedback <finding-id>          Submit review action
     report [--period] [--share]    Generate reports
+    digest [--period]              Weekly markdown digest
     status [--fp-rate]             System health and agent FP/TP rates
     config                         Workspace configuration
     chat                           Interactive chat mode
@@ -88,6 +89,8 @@ const cli = meow(
       share: { type: "boolean", default: false },
       open: { type: "boolean", default: false },
       out: { type: "string" },
+      webhook: { type: "string" },
+      alertMin: { type: "string", default: "high" },
       resolve: { type: "string" },
       dismiss: { type: "string" },
       escalate: { type: "string" },
@@ -136,7 +139,13 @@ async function main() {
     case "investigate": {
       const wd = wsDir || cwd;
       ensureDb(wd);
-      const stream = await investigate(wd, flags.type as any, flags.watch);
+      const alertMin = ["critical", "high", "warning", "info"].includes(String(flags.alertMin))
+        ? (flags.alertMin as "critical" | "high" | "warning" | "info")
+        : "high";
+      const stream = await investigate(wd, flags.type as any, flags.watch, {
+        webhookUrl: flags.webhook as string | undefined,
+        alertMin,
+      });
       const { waitUntilExit, unmount } = render(
         <App command="investigate" props={{ stream, onComplete: () => unmount() }} />
       );
@@ -290,6 +299,14 @@ async function main() {
           } catch { console.log("  (could not auto-open browser)"); }
         }
       }
+      break;
+    }
+
+    case "digest": {
+      const wd = wsDir || cwd;
+      if (!ensureDb(wd)) { console.log("No workspace found. Run `argus init` first."); break; }
+      const { generateDigest } = await import("./commands/digest");
+      console.log(await generateDigest(flags.period as string | undefined));
       break;
     }
 
