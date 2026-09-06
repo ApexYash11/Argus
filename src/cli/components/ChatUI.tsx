@@ -3,9 +3,11 @@ import { Box, Text, useApp, useInput } from "ink";
 import Spinner from "ink-spinner";
 import TextInput from "ink-text-input";
 import type { ChatEvent } from "../../model/types";
+import type { Finding } from "../../model/types";
 import { handleChatMessage } from "../commands/chat";
 import type { ChatContext } from "../commands/chat";
 import { BANNER, C, SYM, VERSION } from "../theme";
+import { renderMarkdown, renderFindingCard, renderToolLine } from "./chat-render";
 import path from "path";
 
 const SLASH_COMMANDS = [
@@ -23,29 +25,7 @@ const SUGGESTIONS = [
   "show me open high-severity findings",
 ];
 
-const TOOL_LABELS: Record<string, string> = {
-  list_findings: "Searching findings",
-  get_finding: "Opening finding",
-  get_status: "Checking workspace health",
-  run_investigation: "Running investigation",
-};
 
-function describeToolArgs(rawArgs: string): string {
-  try {
-    const args = JSON.parse(rawArgs) as Record<string, unknown>;
-    const bits = Object.entries(args)
-      .filter(([, v]) => typeof v === "string" && v.length > 0)
-      .map(([k, v]) => `${k}: ${v}`);
-    return bits.length > 0 ? ` (${bits.join(", ")})` : "";
-  } catch {
-    return "";
-  }
-}
-
-function shortSummary(text: string, max = 160): string {
-  const flat = text.replace(/\s+/g, " ").trim();
-  return flat.length > max ? `${flat.slice(0, max)}…` : flat;
-}
 
 const STATUS_BAR = "\u2578ARGUS\u257A  chat mode  \u00B7  type \"exit\" to quit  \u00B7  Esc to cancel";
 const RESERVED_LINES = 6;
@@ -56,6 +36,7 @@ interface Message {
   text: string;
   isUser: boolean;
   accent?: boolean;
+  finding?: Finding;
 }
 
 export default function ChatUI({ cwd, chatCtx }: { cwd: string; chatCtx: ChatContext }) {
@@ -75,9 +56,8 @@ export default function ChatUI({ cwd, chatCtx }: { cwd: string; chatCtx: ChatCon
   const processingRef = useRef(false);
   const inputRef = useRef("");
   const setInputRef = useRef<(s: string) => void>(() => {});
-  const toolMsgMap = useRef<Map<string, number>>(new Map());
   const streamMsgId = useRef<number | null>(null);
-  const toolsUsedRef = useRef<string[]>([]);
+  const [activity, setActivity] = useState<string | null>(null);
 
   const removeMessage = useCallback((id: number) => {
     messagesRef.current = messagesRef.current.filter((m) => m.id !== id);
@@ -150,6 +130,13 @@ export default function ChatUI({ cwd, chatCtx }: { cwd: string; chatCtx: ChatCon
     return id;
   }, []);
 
+  const addCard = useCallback((finding: Finding): number => {
+    const id = msgId.current++;
+    messagesRef.current = [...messagesRef.current, { id, type: "finding_card" as const, text: "", isUser: false, finding }];
+    forceRender((n) => n + 1);
+    return id;
+  }, []);
+
   const appendToLast = useCallback((text: string) => {
     const msgs = messagesRef.current;
     const last = msgs[msgs.length - 1];
@@ -162,18 +149,6 @@ export default function ChatUI({ cwd, chatCtx }: { cwd: string; chatCtx: ChatCon
     }
   }, []);
 
-  const updateByToolCallId = useCallback((toolCallId: string, text: string) => {
-    const id = toolMsgMap.current.get(toolCallId);
-    if (id === undefined) return;
-    const msgs = messagesRef.current;
-    const idx = msgs.findIndex((m) => m.id === id);
-    if (idx === -1) return;
-    const updated = [...msgs];
-    updated[idx] = { ...updated[idx], text } as Message;
-    messagesRef.current = updated;
-    forceRender((n) => n + 1);
-  }, []);
-
   function fmtDur(ms: number): string {
     return ms >= 1000 ? `${(ms / 1000).toFixed(1)}s` : `${ms}ms`;
   }
@@ -182,9 +157,8 @@ export default function ChatUI({ cwd, chatCtx }: { cwd: string; chatCtx: ChatCon
     processingRef.current = true;
     setProcessing(true);
 
-    toolMsgMap.current.clear();
     streamMsgId.current = null;
-    toolsUsedRef.current = [];
+    setActivity(null);
     const controller = new AbortController();
     abortRef.current = controller;
     const gen = handleChatMessage(query, chatCtx, controller.signal);
@@ -194,7 +168,8 @@ export default function ChatUI({ cwd, chatCtx }: { cwd: string; chatCtx: ChatCon
       for await (const event of gen) {
         switch (event.type) {
           case "agent_thinking":
-            addMessage("agent_thinking", event.message, false);
+            // Transient activity, not transcript — one live line, never a dump.
+            setActivity(event.message);
             setStatusText(event.message.slice(0, 60));
             break;
           case "tool_start": {
@@ -204,20 +179,20 @@ export default function ChatUI({ cwd, chatCtx }: { cwd: string; chatCtx: ChatCon
               streamMsgId.current = null;
               llmActive = false;
             }
-            const label = TOOL_LABELS[event.tool] ?? event.tool;
-            const detail = describeToolArgs(event.args);
-            const mid = addMessage("tool_start", `${SYM.agent} ${label}${detail}…`, false);
-            toolMsgMap.current.set(event.toolCallId, mid);
-            if (!toolsUsedRef.current.includes(event.tool)) toolsUsedRef.current.push(event.tool);
-            setStatusText(`${label}...`);
+            setActivity(renderToolLine(event.tool, "start"));
+            setStatusText(renderToolLine(event.tool, "start"));
             break;
           }
           case "tool_end":
-            updateByToolCallId(event.toolCallId, `${SYM.ok} ${shortSummary(event.summary)} (${fmtDur(event.durationMs)})`);
-            setStatusText("Thinking...");
+            addMessage("tool_end", `${SYM.ok} ${renderToolLine(event.tool, "done", event.summary)}`, false);
             break;
           case "tool_error":
-            updateByToolCallId(event.toolCallId, `${SYM.warn} ${event.error}`);
+            addMessage("tool_error", `${SYM.warn} ${event.tool} failed: ${event.error}`, false);
+            setActivity(null);
+            break;
+          case "finding_card":
+            setActivity(null);
+            addCard(event.finding);
             break;
           case "llm_chunk":
             if (!llmActive) {
@@ -241,13 +216,11 @@ export default function ChatUI({ cwd, chatCtx }: { cwd: string; chatCtx: ChatCon
               addMessage("llm_chunk", event.fullText, false);
             }
             streamMsgId.current = null;
-            if (toolsUsedRef.current.length > 0) {
-              addMessage("agent_thinking", `${SYM.dot} via ${toolsUsedRef.current.join(", ")}`, false);
-              toolsUsedRef.current = [];
-            }
+            setActivity(null);
             setStatusText("Ready.");
             break;
           case "done":
+            setActivity(null);
             setStatusText(
               event.totalFindings !== undefined
                 ? `${event.totalFindings} finding(s) in ${fmtDur(event.durationMs)}`
@@ -255,12 +228,12 @@ export default function ChatUI({ cwd, chatCtx }: { cwd: string; chatCtx: ChatCon
             );
             break;
           case "error":
+            setActivity(null);
             addMessage("error", `Error: ${event.message}`, false);
             setStatusText("Error.");
             break;
           case "clear":
             messagesRef.current = [];
-            toolMsgMap.current.clear();
             forceRender((n) => n + 1);
             break;
           case "help":
@@ -280,7 +253,7 @@ export default function ChatUI({ cwd, chatCtx }: { cwd: string; chatCtx: ChatCon
       abortRef.current = null;
       if (!llmActive) setStatusText("Ready.");
     }
-  }, [cwd, addMessage, appendToLast, updateByToolCallId, removeMessage]);
+  }, [cwd, addMessage, appendToLast, removeMessage]);
 
   const processNext = useCallback(async () => {
     while (queueRef.current.length > 0) {
@@ -334,6 +307,31 @@ export default function ChatUI({ cwd, chatCtx }: { cwd: string; chatCtx: ChatCon
     ? SLASH_COMMANDS.filter((c) => c.name.startsWith(input.toLowerCase())).slice(0, 6)
     : [];
 
+  function renderAssistant(text: string, keyPrefix: string): React.ReactNode[] {
+    return renderMarkdown(text).map((line, i) => (
+      <Text key={`${keyPrefix}-${i}`}>
+        {line.segments.map((s, j) => (
+          <Text key={j} color={s.color} bold={s.bold}>{s.text}</Text>
+        ))}
+      </Text>
+    ));
+  }
+
+  function renderCard(msg: Message): React.ReactNode {
+    const card = renderFindingCard(msg.finding!);
+    return (
+      <Box flexDirection="column" borderStyle="round" borderColor={C.muted} paddingX={2} marginLeft={2}>
+        <Text>
+          {card.headline.map((s, i) => (
+            <Text key={i} color={s.color} bold={s.bold}>{s.text}</Text>
+          ))}
+        </Text>
+        <Text color={C.muted}>{card.detail}</Text>
+        <Text color={C.muted}>→ {card.hint}</Text>
+      </Box>
+    );
+  }
+
   return (
     <Box flexDirection="column" height="100%" paddingX={1}>
       <Box marginBottom={1}>
@@ -342,24 +340,32 @@ export default function ChatUI({ cwd, chatCtx }: { cwd: string; chatCtx: ChatCon
 
       <Box flexDirection="column" flexGrow={1}>
         {scrollMsgs.map((msg) => (
-          <Box key={msg.id} marginBottom={1}>
+          <Box key={msg.id} marginBottom={1} flexDirection="column">
             {msg.isUser ? (
               <Box>
                 <Text color={C.blue}>{SYM.input} </Text>
                 <Text bold>{msg.text}</Text>
               </Box>
-            ) : msg.type === "agent_thinking" ? (
+            ) : msg.type === "finding_card" && msg.finding ? (
+              renderCard(msg)
+            ) : msg.type === "llm_chunk" ? (
+              renderAssistant(msg.text, `m${msg.id}`)
+            ) : (
               <Box paddingLeft={2}>
                 <Text color={msgColor(msg)}>{msg.text}</Text>
               </Box>
-            ) : (
-              <Text color={msgColor(msg)}>{msg.text}</Text>
             )}
           </Box>
         ))}
       </Box>
 
-      {processing && (
+      {activity !== null && (
+        <Box marginY={1} paddingLeft={2}>
+          <Text color={C.cyan}>✻ {activity}</Text>
+        </Box>
+      )}
+
+      {processing && activity === null && (
         <Box marginY={1}>
           <Text color="green"><Spinner type="dots" /></Text>
           <Text color={C.muted}> {statusText}</Text>
@@ -388,6 +394,9 @@ export default function ChatUI({ cwd, chatCtx }: { cwd: string; chatCtx: ChatCon
           onSubmit={onSubmit}
           placeholder="Ask to investigate, or / for commands…"
         />
+      </Box>
+      <Box>
+        <Text color={C.dim}>esc to cancel · / for commands · exit to quit</Text>
       </Box>
     </Box>
   );

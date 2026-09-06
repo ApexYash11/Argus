@@ -55,8 +55,7 @@ async function* runCompactInvestigation(
         break;
       case "finding":
         findings++;
-        perAgent.push(`${event.finding.agentType}: ${event.finding.id} [${event.finding.severity}]`);
-        yield { type: "agent_thinking", message: `${event.finding.id} | ${event.finding.title} | [${event.finding.severity}] ${(event.finding.confidence * 100).toFixed(0)}%` };
+        yield { type: "finding_card", finding: event.finding };
         break;
       case "confidence":
         break;
@@ -65,7 +64,7 @@ async function* runCompactInvestigation(
     }
   }
   if (perAgent.length > 0) {
-    yield { type: "agent_thinking", message: perAgent.join(" · ") };
+    yield { type: "agent_thinking", message: `Checked: ${perAgent.join(", ")}.` };
   }
   yield { type: "agent_thinking", message: findings > 0 ? `Done — ${findings} finding(s). Ask me to explain any ID.` : "Done — no new findings. Previously dismissed items stay dismissed." };
   yield { type: "done", totalFindings: findings, durationMs: 0 };
@@ -90,10 +89,11 @@ export async function* handleChatMessage(
       case "findings": {
         const findings = getFindings();
         if (findings.length === 0) {
-          yield { type: "agent_thinking", message: "No findings found." };
+          yield { type: "agent_thinking", message: "No findings yet — run `audit` on a folder first." };
         } else {
-          for (const f of findings) {
-            yield { type: "agent_thinking", message: `${f.id} | ${f.title} | [${f.severity}] ${(f.confidence * 100).toFixed(0)}% \u2014 ${f.status}` };
+          yield { type: "agent_thinking", message: `Found ${findings.length} finding(s):` };
+          for (const f of findings.slice(0, 10)) {
+            yield { type: "finding_card", finding: f };
           }
         }
         yield { type: "done", durationMs: 0 };
