@@ -79,7 +79,7 @@ export default function InitWizard({ cwd, initial, onComplete }: Props) {
   return (
     <Box flexDirection="column" height="100%" paddingX={1}>
       <Box marginBottom={1}>
-        <Text color={C.muted}>{WORDMARK} {VERSION}  {SYM.dot}  {cwd}</Text>
+        <Text color={C.muted}>ARGUS {VERSION}  {SYM.dot}  {cwd}</Text>
       </Box>
 
       <Box flexDirection="column" borderStyle="round" borderColor={C.cyan} paddingX={2} paddingY={1} marginBottom={1}>
