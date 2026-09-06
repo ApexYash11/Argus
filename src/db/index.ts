@@ -17,9 +17,11 @@ export function initDb(workspaceDir: string): Database {
   db = new Database(dbPath);
   db.exec("PRAGMA journal_mode = WAL");
   db.exec("PRAGMA foreign_keys = ON");
+  db.exec("PRAGMA busy_timeout = 5000");
   db.exec(SCHEMA_SQL);
   // Migrations
   try { db.exec("ALTER TABLE findings ADD COLUMN recommendation TEXT"); } catch {}
+  try { db.exec("ALTER TABLE calibration ADD COLUMN resolve_count INTEGER DEFAULT 0"); } catch {}
   return db;
 }
 
@@ -27,5 +29,19 @@ export function closeDb(): void {
   if (db) {
     db.close();
     db = null;
+  }
+}
+
+/** Run fn inside a single SQLite transaction (bulk inserts go from ~30 rows/s to thousands). */
+export function withTransaction<T>(fn: () => T): T {
+  const d = getDb();
+  d.exec("BEGIN IMMEDIATE");
+  try {
+    const result = fn();
+    d.exec("COMMIT");
+    return result;
+  } catch (err) {
+    try { d.exec("ROLLBACK"); } catch { /* ignore */ }
+    throw err;
   }
 }

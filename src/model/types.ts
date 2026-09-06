@@ -74,6 +74,7 @@ export interface Calibration {
   vendorId?: string;
   thresholdOverride?: number;
   dismissCount: number;
+  resolveCount?: number;
   lastUpdated: string;
 }
 

@@ -86,12 +86,22 @@ export default function ChatUI({ cwd, chatCtx }: { cwd: string; chatCtx: ChatCon
   useEffect(() => {
     setInputRef.current = setInput;
     const base = path.basename(cwd);
-    messagesRef.current = [
+    const prov = (process.env.OPENROUTER_API_KEY ? "openrouter" : process.env.GROQ_API_KEY ? "groq" : "local") as "openrouter" | "groq" | "local";
+    const model = process.env.OPENROUTER_MODEL ?? (prov === "openrouter" ? "openrouter/free" : prov);
+    const lines: Message[] = [
       { id: msgId.current++, type: "agent_thinking" as const, text: `${WORDMARK} ${VERSION} ${SYM.dot} ${base}`, isUser: false },
-      { id: msgId.current++, type: "agent_thinking" as const, text: "Ask me to investigate — try one of these:", isUser: false },
-      ...SUGGESTIONS.map((s) => ({ id: msgId.current++, type: "agent_thinking" as const, text: `  ${SYM.input} ${s}`, isUser: false })),
-      { id: msgId.current++, type: "agent_thinking" as const, text: "Commands: /findings /investigate /status /digest /clear /help — or just ask.", isUser: false },
     ];
+    if (prov === "local") {
+      lines.push({ id: msgId.current++, type: "agent_thinking" as const, text: `${SYM.warn} LLM: local fallback (deterministic, no chat reasoning). Set OPENROUTER_API_KEY in .env to unlock agent chat.`, isUser: false });
+    } else {
+      lines.push({ id: msgId.current++, type: "agent_thinking" as const, text: `${SYM.ok} LLM: ${prov} (${model})`, isUser: false });
+    }
+    lines.push({ id: msgId.current++, type: "agent_thinking" as const, text: "Ask me to investigate — try one of these:", isUser: false });
+    for (const s of SUGGESTIONS) {
+      lines.push({ id: msgId.current++, type: "agent_thinking" as const, text: `  ${SYM.input} ${s}`, isUser: false });
+    }
+    lines.push({ id: msgId.current++, type: "agent_thinking" as const, text: "Commands: /findings /investigate /status /digest /clear /help — or just ask.", isUser: false });
+    messagesRef.current = lines;
     forceRender((n) => n + 1);
   }, []);
 

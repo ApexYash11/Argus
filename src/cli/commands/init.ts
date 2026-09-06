@@ -13,7 +13,16 @@ const DEFAULT_CONFIG: ConfigInput = {
   scratchpad: { retentionCount: 30 },
 };
 
-export async function initWorkspace(dir: string, company?: string): Promise<void> {
+export interface InitOptions {
+  currency?: string;
+  dataChoice?: "sample" | "folder" | "skip";
+  folder?: string;
+  llmChoice?: "skip" | "openrouter" | "groq";
+  llmKey?: string;
+  runDemo?: boolean;
+}
+
+export async function initWorkspace(dir: string, company?: string, opts: InitOptions = {}): Promise<void> {
   const auditDir = path.join(dir, ".audit");
   const scratchDir = path.join(auditDir, "scratchpad");
   fs.mkdirSync(auditDir, { recursive: true });
@@ -21,7 +30,11 @@ export async function initWorkspace(dir: string, company?: string): Promise<void
 
   const configPath = path.join(dir, "audit.yaml");
   if (!fs.existsSync(configPath)) {
-    const config = { ...DEFAULT_CONFIG, ...(company ? { company } : {}) };
+    const config = {
+      ...DEFAULT_CONFIG,
+      ...(company ? { company } : {}),
+      ...(opts.currency ? { currency: opts.currency } : {}),
+    };
     const validated = ConfigSchema.parse(config);
     const safeCompany = validated.company.replace(/['":#\[\]{}&*!|>%@`\n\r]/g, "").slice(0, 100);
     const yaml = `# AI Spend Auditor Configuration
@@ -38,4 +51,18 @@ scratchpad:
   }
 
   initDb(dir);
+
+  if (opts.llmChoice === "openrouter" && opts.llmKey) {
+    const envPath = path.join(dir, ".env");
+    const existing = fs.existsSync(envPath) ? fs.readFileSync(envPath, "utf-8") : "";
+    if (!/^OPENROUTER_API_KEY=/m.test(existing)) {
+      fs.appendFileSync(envPath, `OPENROUTER_API_KEY=${opts.llmKey}\n`);
+    }
+  } else if (opts.llmChoice === "groq" && opts.llmKey) {
+    const envPath = path.join(dir, ".env");
+    const existing = fs.existsSync(envPath) ? fs.readFileSync(envPath, "utf-8") : "";
+    if (!/^GROQ_API_KEY=/m.test(existing)) {
+      fs.appendFileSync(envPath, `GROQ_API_KEY=${opts.llmKey}\n`);
+    }
+  }
 }

@@ -10,8 +10,9 @@ import { sampleRows } from "../../ingest/smart-sampler";
 import { detectSchema } from "../../ingest/schema-detector";
 import { extractPdf, extractInvoiceFields } from "../../ingest/pdf-extractor";
 import { insertFinancialRecord, insertUsageRecord } from "../../db/queries";
-import { getDb } from "../../db/index";
-import { writeScratchpadEntry, initScratchpad } from "../../engine/scratchpad";
+import { getDb, withTransaction } from "../../db/index";
+import { writeScratchpadEntry, writeScratchpadEntries, initScratchpad } from "../../engine/scratchpad";
+import { clearVendorCache } from "../../ingest/vendor-resolver";
 
 export interface IngestOptions {
   type?: string;
@@ -29,6 +30,7 @@ export async function ingestFile(
     const ext = path.extname(absPath).toLowerCase();
 
     initScratchpad(cwd);
+    clearVendorCache();
 
     if (ext === ".pdf") {
       yield* oldPipeline(absPath, options.type);
@@ -231,6 +233,7 @@ async function* newPipeline(filePath: string, options: IngestOptions): AsyncGene
   const allQualityFlags = new Map<string, number>();
   let ingestedCount = 0;
   const seen = new Set<string>();
+  const pending: Array<{ record: import("../../model/types").FinancialRecord; summary: string; scratch: string }> = [];
   const rowLimit = options.dryRun ? Math.min(5, inspection.totalDataRows) : inspection.totalDataRows;
 
   // Filter empty trailing rows
@@ -238,6 +241,14 @@ async function* newPipeline(filePath: string, options: IngestOptions): AsyncGene
 
   resetDateLocaleCache();
 
+  // Single transaction for the whole file: vendor upserts during normalization
+  // otherwise cost one transaction each (was: ~9k transactions on large files).
+  // Committed in finally so abandoned generators still persist partial work.
+  const bulkDb = getDb();
+  let bulkOpen = false;
+  try {
+    bulkDb.exec("BEGIN IMMEDIATE");
+    bulkOpen = true;
   for (let i = 0; i < rowLimit; i++) {
     const rawRowValues = dataRows[i];
     if (!rawRowValues) continue;
@@ -288,19 +299,10 @@ async function* newPipeline(filePath: string, options: IngestOptions): AsyncGene
       }
 
       const { record, vendorResolution } = normalizeRecord(mockRaw as any, currency);
-      insertFinancialRecord(record);
-      ingestedCount++;
-
-      yield {
-        type: "evidence_found",
-        key: record.id,
-        value: `${vendorResolution.canonicalName} — ${record.amount} ${record.currency}`,
-        sourceDocId: record.id,
-      };
-
-      writeScratchpadEntry({
-        type: "record_ingested",
-        message: `${vendorResolution.canonicalName} | ${record.amount} ${record.currency} | resolved via ${vendorResolution.method}`,
+      pending.push({
+        record,
+        summary: `${vendorResolution.canonicalName} — ${record.amount} ${record.currency}`,
+        scratch: `${vendorResolution.canonicalName} | ${record.amount} ${record.currency} | resolved via ${vendorResolution.method}`,
       });
     } catch (err) {
       yield {
@@ -310,6 +312,28 @@ async function* newPipeline(filePath: string, options: IngestOptions): AsyncGene
       };
     }
   }
+  } finally {
+    if (bulkOpen) {
+      try { bulkDb.exec("COMMIT"); } catch { try { bulkDb.exec("ROLLBACK"); } catch { /* ignore */ } }
+    }
+  }
+
+  // Bulk insert in a single transaction (was: one transaction per row, ~30 rows/s)
+  if (pending.length > 0 && !options.dryRun) {
+    withTransaction(() => {
+      for (const p of pending) insertFinancialRecord(p.record);
+    });
+  }
+  for (const p of pending) {
+    ingestedCount++;
+    yield {
+      type: "evidence_found",
+      key: p.record.id,
+      value: p.summary,
+      sourceDocId: p.record.id,
+    };
+  }
+  writeScratchpadEntries(pending.map((p) => ({ type: "record_ingested" as const, message: p.scratch })));
 
   // Quality summary
   if (allQualityFlags.size > 0) {

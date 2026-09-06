@@ -1,0 +1,56 @@
+{
+  "vix-daily": {
+    "id": "vix-daily",
+    "url": "https://raw.githubusercontent.com/datasets/finance-vix/main/data/vix-daily.csv",
+    "columns": [
+      "date",
+      "open",
+      "high",
+      "low",
+      "close"
+    ],
+    "description": "CBOE Volatility Index daily close (1990-) — public mirror of finance-vix dataset.",
+    "dateCol": "date",
+    "amountCol": "close",
+    "dateRange": "1990-01-02+",
+    "fetched": true,
+    "rows": 9266,
+    "bytes": 481576,
+    "error": null,
+    "fetchedAt": "2026-09-05T20:44:55.423Z"
+  },
+  "us10y-monthly": {
+    "id": "us10y-monthly",
+    "url": "https://fred.stlouisfed.org/graph/fredgraph.csv?id=DGS10&cosd=2000-01-01&coed=2025-12-31",
+    "columns": [
+      "date",
+      "yield_pct"
+    ],
+    "description": "FRED DGS10 daily 10-Year Treasury constant-maturity yield, 2000-2025.",
+    "dateCol": "date",
+    "amountCol": "yield_pct",
+    "dateRange": "2000-01-03 .. 2025+",
+    "fetched": true,
+    "rows": 6783,
+    "bytes": 107427,
+    "error": null,
+    "fetchedAt": "2026-09-05T20:44:55.424Z"
+  },
+  "nasdaq-monthly": {
+    "id": "nasdaq-monthly",
+    "url": "https://raw.githubusercontent.com/datasets/nasdaq-listings/main/data/nasdaq-listed.csv",
+    "columns": [
+      "symbol",
+      "name",
+      "sector",
+      "industry"
+    ],
+    "description": "NASDAQ-listed companies snapshot (symbol/name/sector) — used as a subscriptions-style vendor master.",
+    "dateRange": "snapshot",
+    "fetched": true,
+    "rows": 5592,
+    "bytes": 266547,
+    "error": null,
+    "fetchedAt": "2026-09-05T20:44:55.424Z"
+  }
+}

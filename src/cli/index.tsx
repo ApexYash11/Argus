@@ -48,7 +48,7 @@ const cli = meow(
     $ argus <command> [options]
 
   Commands
-    init                           Initialize workspace
+    init [--wizard]                Initialize workspace (--wizard for guided setup)
     ingest <path>                  Ingest financial data
     investigate [--type] [--watch] [--webhook URL] [--alert-min high] Run investigation engine
     findings [--status] [--type]   Browse findings
@@ -58,6 +58,7 @@ const cli = meow(
     report [--period] [--share]    Generate reports
     digest [--period]              Weekly markdown digest
     status [--fp-rate]             System health and agent FP/TP rates
+    web [--port] [--open]          Local web viewer (127.0.0.1 only)
     config                         Workspace configuration
     chat                           Interactive chat mode
 
@@ -99,6 +100,9 @@ const cli = meow(
       to: { type: "string" },
       nonInteractive: { type: "boolean", default: false },
       fpRate: { type: "boolean", default: false },
+      wizard: { type: "boolean", default: false },
+      currency: { type: "string" },
+      port: { type: "number", default: 7333 },
     },
   }
 );
@@ -114,9 +118,45 @@ const wsDir = findWorkspaceDir(cwd);
 async function main() {
   switch (command) {
     case "init":
-      await initWorkspace(cwd, flags.company);
-      console.log("Workspace initialized.");
+      if (flags.wizard) {
+        const { render } = await import("ink");
+        const InitWizard = (await import("./components/InitWizard")).default;
+        const { runDemo } = await import("./commands/demo");
+        const { initDb } = await import("../db/index");
+        initDb(cwd);
+        const onComplete = async (state: any) => {
+          await initWorkspace(cwd, state.company, { currency: state.currency, llmChoice: state.llmChoice, llmKey: state.llmKey });
+          if (state.dataChoice === "sample") {
+            const r = await runDemo(cwd);
+            console.log(`Ingested ${r.ingested} sample file(s), ${r.findings} finding(s).`);
+          }
+        };
+        const { waitUntilExit } = render(<InitWizard cwd={cwd} onComplete={onComplete} />);
+        await waitUntilExit;
+      } else {
+        await initWorkspace(cwd, flags.company, { currency: flags.currency as string | undefined });
+        console.log("Workspace initialized.");
+      }
       break;
+
+    case "demo": {
+      const { runDemo } = await import("./commands/demo");
+      await initWorkspace(cwd, undefined, { runDemo: true });
+      const r = await runDemo(cwd);
+      console.log(`\nDemo workspace ready.`);
+      console.log(`  Files ingested: ${r.files.length}`);
+      console.log(`  Findings:       ${r.findings}`);
+      if (r.errors.length > 0) {
+        console.log(`  Errors:`);
+        for (const e of r.errors) console.log(`    - ${e}`);
+      }
+      console.log(`\nNext:`);
+      console.log(`  argus status     — system overview`);
+      console.log(`  argus findings   — see what was found`);
+      console.log(`  argus chat       — ask in plain English`);
+      console.log(`  argus report --share — shareable HTML`);
+      break;
+    }
 
     case "ingest": {
       const wd = wsDir || cwd;
@@ -265,6 +305,15 @@ async function main() {
         break;
       }
       const status = await getStatus();
+      const llm = (status as { llm?: { provider: string; ready: boolean; hint: string } }).llm;
+      console.log("");
+      if (!llm?.ready) {
+        console.log(`  ${"\u26A0".padEnd(2)} LLM: ${llm?.provider ?? "unknown"} (not ready)`);
+        console.log(`      ${llm?.hint ?? "Set OPENROUTER_API_KEY in .env to enable LLM features."}`);
+      } else {
+        console.log(`  ${"\u2713".padEnd(2)} LLM: ${llm.provider}`);
+      }
+      console.log("");
       const { waitUntilExit, unmount } = render(
         <App command="status" props={{
           recordCount: status.recordCount,
@@ -322,6 +371,24 @@ async function main() {
         initDb(wd);
       }
       await startChat(wd);
+      break;
+    }
+
+    case "web": {
+      const wd = wsDir || cwd;
+      if (!ensureDb(wd)) { console.log("No workspace found. Run `argus init` first."); break; }
+      const { startWebServer } = await import("./commands/web");
+      const { url } = await startWebServer(wd, flags.port as number);
+      console.log(`\n  Argus web viewer: ${url}`);
+      console.log(`  Bound to 127.0.0.1 only. Press Ctrl+C to stop.`);
+      if (flags.open) {
+        try {
+          const { exec } = await import("child_process");
+          const cmd = process.platform === "win32" ? `start "" "${url}"` : process.platform === "darwin" ? `open "${url}"` : `xdg-open "${url}"`;
+          exec(cmd);
+        } catch { console.log("  (could not auto-open browser)"); }
+      }
+      await new Promise(() => {});
       break;
     }
 
