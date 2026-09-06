@@ -1,7 +1,7 @@
 import React from "react";
 import path from "path";
 import fs from "fs";
-import type { ChatEvent, FinancialEvent, AgentType } from "../../model/types";
+import type { ChatEvent, FinancialEvent, AgentType, Finding } from "../../model/types";
 import { runSupervisor } from "../../agents/supervisor";
 import { ingestFile } from "./ingest";
 import { getFindings, getFindingById, getRecordCount, getAllVendors } from "../../db/queries";
@@ -37,8 +37,8 @@ async function* runCompactInvestigation(
   };
   const stream = await runSupervisor(ctx.cwd, trigger, agent ?? undefined, undefined, signal);
   const perAgent: string[] = [];
+  const newFindings: Finding[] = [];
   let current: string | null = null;
-  let findings = 0;
   for await (const event of stream) {
     if (signal?.aborted) break;
     switch (event.type) {
@@ -47,14 +47,14 @@ async function* runCompactInvestigation(
         break;
       case "step":
         if (/^error:/i.test(event.message)) {
-          yield { type: "agent_thinking", message: `${current ?? event.agent}: ${event.message}` };
+          yield { type: "agent_thinking", message: `Something went wrong in ${current ?? event.agent}: ${event.message.replace(/^error:\s*/i, "")}` };
         }
         break;
       case "agent_skipped":
-        perAgent.push(`${event.agent}: skipped (${event.reason})`);
+        perAgent.push(humanAgentName(event.agent));
         break;
       case "finding":
-        findings++;
+        newFindings.push(event.finding);
         yield { type: "finding_card", finding: event.finding };
         break;
       case "confidence":
@@ -63,15 +63,49 @@ async function* runCompactInvestigation(
         break;
     }
   }
-  if (perAgent.length > 0) {
-    yield { type: "agent_thinking", message: `Checked: ${perAgent.join(", ")}.` };
+  ctx.lastFindings = newFindings.length > 0 ? newFindings : ctx.lastFindings;
+  const skipped = perAgent.length > 0 ? ` Skipped ${perAgent.join(", ")} (not enough data).` : "";
+  if (newFindings.length > 0) {
+    yield { type: "agent_thinking", message: await composeSummary(newFindings, agent) };
+  } else {
+    yield { type: "agent_thinking", message: `Nothing new to report.${skipped} Dismissed items stay dismissed — say \`feedback <id> --resolve\` in your shell to clear one.` };
   }
-  yield { type: "agent_thinking", message: findings > 0 ? `Done — ${findings} finding(s). Ask me to explain any ID.` : "Done — no new findings. Previously dismissed items stay dismissed." };
-  yield { type: "done", totalFindings: findings, durationMs: 0 };
+  yield { type: "done", totalFindings: newFindings.length, durationMs: 0 };
+}
+
+function humanAgentName(agent: string): string {
+  return agent.split("-").map((w) => (w ? w[0]!.toUpperCase() + w.slice(1) : w)).join(" ");
+}
+
+/** Human closing paragraph: LLM-composed when available, template otherwise. */
+async function composeSummary(
+  findings: Finding[],
+  agent: AgentType | null
+): Promise<string> {
+  const top = findings.slice(0, 3).map((f) =>
+    `${f.severity} ${f.agentType} at ${f.vendorId ?? "unknown vendor"} (${f.impactAmount ?? 0} ${f.impactCurrency ?? ""}, ${Math.round(f.confidence * 100)}%)`
+  ).join("; ");
+  const fallback = findings.length === 1
+    ? `Found 1 thing worth your time: ${top}. Say \`explain 1\` and I'll walk through the evidence.`
+    : `Found ${findings.length} things worth your time: ${top}${findings.length > 3 ? ", and more" : ""}. Say \`explain 1\` and I'll walk through the evidence.`;
+  try {
+    const { pickProvider } = await import("../../model/llm");
+    const provider = pickProvider();
+    if (provider.name === "local") return fallback;
+    const reply = await provider.complete([
+      { role: "system", content: "You are Argus, a financial investigator. Write ONE short paragraph (max 3 sentences, plain words, no jargon, no markdown headers) summarizing these findings for a founder. End with which one to look at first." },
+      { role: "user", content: `Scope: ${agent ?? "all agents"}. Findings: ${top}. Total: ${findings.length}.` },
+    ]);
+    const clean = reply.replace(/^FINAL:\s*/i, "").trim();
+    return clean.length > 0 ? clean : fallback;
+  } catch {
+    return fallback;
+  }
 }
 
 export interface ChatContext {
   cwd: string;
+  lastFindings?: Finding[];
 }
 
 export async function* handleChatMessage(
@@ -87,14 +121,19 @@ export async function* handleChatMessage(
     const cmd = parts[0].slice(1).toLowerCase();
     switch (cmd) {
       case "findings": {
-        const findings = getFindings();
+        const findings = getFindings().slice(0, 10);
         if (findings.length === 0) {
-          yield { type: "agent_thinking", message: "No findings yet — run `audit` on a folder first." };
+          yield { type: "agent_thinking", message: "Nothing flagged so far — run `argus audit` on a folder first." };
         } else {
-          yield { type: "agent_thinking", message: `Found ${findings.length} finding(s):` };
-          for (const f of findings.slice(0, 10)) {
+          ctx.lastFindings = findings;
+          yield { type: "agent_thinking", message: `Here's what's on my radar (${findings.length}):` };
+          let n = 0;
+          for (const f of findings) {
+            n++;
+            yield { type: "agent_thinking", message: `${n}.` };
             yield { type: "finding_card", finding: f };
           }
+          yield { type: "agent_thinking", message: `Say \`explain 1\` and I'll walk through it.` };
         }
         yield { type: "done", durationMs: 0 };
         return;
@@ -183,15 +222,21 @@ export async function* handleChatMessage(
   }
 
   if (/^(findings|show|list|what did you find)\b/.test(lower)) {
-    const findings = getFindings();
+    const findings = getFindings().slice(0, 10);
     if (findings.length === 0) {
-      yield { type: "agent_thinking", message: "No findings found." };
+      yield { type: "agent_thinking", message: "Nothing flagged so far. Run `argus audit` on a folder, then ask me again." };
       yield { type: "done", durationMs: 0 };
       return;
     }
+    ctx.lastFindings = findings;
+    yield { type: "agent_thinking", message: `Here's what's on my radar (${findings.length}):` };
+    let n = 0;
     for (const f of findings) {
-      yield { type: "agent_thinking", message: `${f.id} | ${f.title} | [${f.severity}] ${(f.confidence * 100).toFixed(0)}% \u2014 ${f.status}` };
+      n++;
+      yield { type: "agent_thinking", message: `${n}.` };
+      yield { type: "finding_card", finding: f };
     }
+    yield { type: "agent_thinking", message: `Say \`explain 1\` (or any number) and I'll walk through it.` };
     yield { type: "done", durationMs: 0 };
     return;
   }
@@ -199,22 +244,24 @@ export async function* handleChatMessage(
   if (/^explain\b/i.test(input)) {
     const id = parts[1];
     if (!id) {
-      yield { type: "agent_thinking", message: "Usage: explain FINDING-XXX" };
+      yield { type: "agent_thinking", message: "Tell me which one — `explain 1` for the first card above, or `explain FINDING-XXX`." };
       yield { type: "done", durationMs: 0 };
       return;
     }
-    const finding = getFindingById(id.toUpperCase());
+    const num = /^\d+$/.test(id) ? parseInt(id, 10) : null;
+    const finding = num !== null
+      ? ctx.lastFindings?.[num - 1] ?? null
+      : getFindingById(id.toUpperCase());
     if (!finding) {
-      yield { type: "agent_thinking", message: `Finding ${id.toUpperCase()} not found.` };
+      yield { type: "agent_thinking", message: num !== null
+        ? `I only have ${ctx.lastFindings?.length ?? 0} findings listed — try a smaller number, or run \`findings\` again.`
+        : `Finding ${id.toUpperCase()} not found.` };
       yield { type: "done", durationMs: 0 };
       return;
     }
-    yield { type: "agent_thinking", message: `${finding.id}` };
-    yield { type: "agent_thinking", message: `Title: ${finding.title}` };
-    yield { type: "agent_thinking", message: `Severity: ${finding.severity}` };
-    yield { type: "agent_thinking", message: `Confidence: ${(finding.confidence * 100).toFixed(0)}%` };
-    yield { type: "agent_thinking", message: `Status: ${finding.status}` };
-    yield { type: "agent_thinking", message: `Summary: ${finding.summary}` };
+    yield { type: "finding_card", finding };
+    yield { type: "agent_thinking", message: `Why this matters: ${finding.summary.replace(/\s+/g, " ").trim().slice(0, 280)}` };
+    yield { type: "agent_thinking", message: `Confidence ${Math.round(finding.confidence * 100)}%, status ${finding.status}. In your shell: \`argus feedback ${finding.id} --resolve \"fixed\"\` to clear it.` };
     yield { type: "done", durationMs: 0 };
     return;
   }
