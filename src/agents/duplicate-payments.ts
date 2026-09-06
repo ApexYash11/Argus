@@ -153,14 +153,27 @@ registerAgent("duplicate-payments", {
     }
 
     const pairs: ScoredPair[] = [];
+    const MAX_PAIR_SCANS = 500_000;
+    let scans = 0;
+    let capped = false;
     for (const [, group] of byVendor) {
       if (group.length < 2) continue;
-      for (let i = 0; i < group.length; i++) {
-        for (let j = i + 1; j < group.length; j++) {
-          const scored = scorePair(group[i]!, group[j]!);
+      // Sort by date so the inner loop can break once the gap exceeds the
+      // 45-day window (was: full O(n^2) scan — 40M+ pairs on large vendors).
+      const sorted = [...group].sort((x, y) => x.date.localeCompare(y.date));
+      for (let i = 0; i < sorted.length; i++) {
+        for (let j = i + 1; j < sorted.length; j++) {
+          if (scans++ >= MAX_PAIR_SCANS) { capped = true; break; }
+          if (daysBetween(sorted[i]!.date, sorted[j]!.date) > HARD_RULES.MAX_DAYS) break;
+          const scored = scorePair(sorted[i]!, sorted[j]!);
           if (scored) pairs.push(scored);
         }
+        if (capped) break;
       }
+      if (capped) break;
+    }
+    if (capped) {
+      ctx.emit({ type: "step", agent: "duplicate-payments", message: `Pair scan capped at ${MAX_PAIR_SCANS.toLocaleString()} — results cover the densest vendor groups first` });
     }
 
     // group pairs by (vendorId, amount) — clusters are stronger evidence

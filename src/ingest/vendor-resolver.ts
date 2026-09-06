@@ -33,13 +33,39 @@ const SEED_VENDORS: Array<{ name: string; aliases: string[] }> = [
 
 const seeded = new Set<string>();
 
+// In-memory vendor cache: resolveVendor() is called per row, and each call
+// used to do 2 full-table scans + upserts (~100 rows/s on large files).
+// Cache is refreshed explicitly per ingest file (see clearVendorCache).
+let vendorCache: Vendor[] | null = null;
+
+export function clearVendorCache(): void {
+  vendorCache = null;
+  resolutionCache.clear();
+}
+
+// Memoize per raw name: repeated vendor names (the common case) skip the
+// full dice scan entirely. Cleared together with the vendor cache.
+const resolutionCache = new Map<string, { vendorId: string; canonicalName: string; confidence: number; method: "seed" | "fuzzy" | "llm" | "new" }>();
+
+function allCached(): Vendor[] {
+  if (!vendorCache) vendorCache = getAllVendors();
+  return vendorCache;
+}
+
+function cacheUpsert(v: Vendor): void {
+  if (!vendorCache) return;
+  const idx = vendorCache.findIndex((x) => x.id === v.id);
+  if (idx >= 0) vendorCache[idx] = v;
+  else vendorCache.push(v);
+}
+
 function seedVendorId(name: string): string {
   const hash = crypto.createHash("sha256").update(name).digest("hex").slice(0, 6).toUpperCase();
   return `VND-${hash}`;
 }
 
 function seedVendors(): void {
-  const existing = getAllVendors();
+  const existing = allCached();
   const existingNames = new Set(existing.map((v) => v.canonicalName.toLowerCase()));
   const existingAliases = new Set(existing.flatMap((v) => v.aliases.map((a) => a.toLowerCase())));
 
@@ -53,6 +79,14 @@ function seedVendors(): void {
     if (hasAnyAlias) continue;
 
     upsertVendor({
+      id,
+      canonicalName: v.name,
+      aliases: [v.name, ...v.aliases],
+      trustScore: 1.0,
+      firstSeen: new Date().toISOString(),
+      lastSeen: new Date().toISOString(),
+    });
+    cacheUpsert({
       id,
       canonicalName: v.name,
       aliases: [v.name, ...v.aliases],
@@ -96,8 +130,16 @@ function normalizeName(name: string): string {
 }
 
 export function resolveVendor(rawName: string): { vendorId: string; canonicalName: string; confidence: number; method: "seed" | "fuzzy" | "llm" | "new" } {
+  const memo = resolutionCache.get(rawName);
+  if (memo) return memo;
+  const resolved = resolveVendorUncached(rawName);
+  resolutionCache.set(rawName, resolved);
+  return resolved;
+}
+
+function resolveVendorUncached(rawName: string): { vendorId: string; canonicalName: string; confidence: number; method: "seed" | "fuzzy" | "llm" | "new" } {
   seedVendors();
-  const vendors = getAllVendors();
+  const vendors = allCached();
   const normalized = normalizeName(rawName);
 
   for (const v of vendors) {
@@ -128,11 +170,13 @@ export function resolveVendor(rawName: string): { vendorId: string; canonicalNam
 
   if (bestScore >= 0.6 && bestVendor) {
     if (bestScore >= 0.85 && rawName.length > 2) {
-      upsertVendor({
+      const updated: Vendor = {
         ...bestVendor,
         aliases: [...new Set([...bestVendor.aliases, rawName])],
         lastSeen: new Date().toISOString(),
-      });
+      };
+      upsertVendor(updated);
+      cacheUpsert(updated);
     }
     return { vendorId: bestVendor.id, canonicalName: bestVendor.canonicalName, confidence: Math.round(bestScore * 100) / 100, method: "fuzzy" };
   }
@@ -147,5 +191,6 @@ export function resolveVendor(rawName: string): { vendorId: string; canonicalNam
     lastSeen: new Date().toISOString(),
   };
   upsertVendor(newVendor);
+  cacheUpsert(newVendor);
   return { vendorId: newId, canonicalName: rawName, confidence: 0.5, method: "new" };
 }

@@ -43,6 +43,14 @@ export function writeScratchpadEntry(entry: Omit<ScratchpadEntry, "timestamp">):
   eventCount++;
 }
 
+/** Batch append (was: one fs open/write per row — dominant cost on large ingests). */
+export function writeScratchpadEntries(entries: Array<Omit<ScratchpadEntry, "timestamp">>): void {
+  if (!scratchpadFile || entries.length === 0) return;
+  const lines = entries.map((e) => JSON.stringify({ ...e, timestamp: new Date().toISOString() }).concat("\n")).join("");
+  fs.appendFileSync(scratchpadFile, lines);
+  eventCount += entries.length;
+}
+
 export function getEventCount(): number {
   return eventCount;
 }

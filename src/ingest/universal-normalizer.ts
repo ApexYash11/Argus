@@ -17,6 +17,7 @@ interface DateVote {
 }
 
 let dateLocaleCache: DateVote | null = null;
+let dateLocaleDecided: boolean | null = null;
 const VENDOR_DESC_PATTERNS = [
   /payment\s+to\s+(.+)/i,
   /^(.+?)\s*[-–—]\s*/,
@@ -98,13 +99,9 @@ function countDDFormats(values: string[]): DateVote {
 }
 
 function determineDateLocale(sampleRows: Record<string, string>[], columnStats: ColumnStats[]): boolean {
-  if (dateLocaleCache) {
-    if (dateLocaleCache.ddmm === 0 && dateLocaleCache.mmdd === 0) {
-      dateLocaleCache = null;
-    } else {
-      return dateLocaleCache.ddmm >= dateLocaleCache.mmdd;
-    }
-  }
+  // Memoize per file (reset via resetDateLocaleCache). Previously a 0/0 vote
+  // nulled the cache, forcing a full re-vote on EVERY row.
+  if (dateLocaleDecided !== null) return dateLocaleDecided;
 
   const dateValues: string[] = [];
   const dateCols = columnStats.filter((c) => c.looks_like_date);
@@ -116,12 +113,11 @@ function determineDateLocale(sampleRows: Record<string, string>[], columnStats: 
   }
 
   const vote = countDDFormats(dateValues);
-  if (vote.ddmm === 0 && vote.mmdd === 0) {
-    dateLocaleCache = null;
-    return false;
-  }
   dateLocaleCache = vote;
-  return vote.ddmm >= vote.mmdd;
+  dateLocaleDecided = vote.ddmm >= vote.mmdd && (vote.ddmm > 0 || vote.mmdd > 0)
+    ? vote.ddmm >= vote.mmdd
+    : false;
+  return dateLocaleDecided;
 }
 
 function parseDateRaw(value: string, preferDDMM: boolean): string {
@@ -216,6 +212,7 @@ function isFutureDated(dateStr: string): boolean {
 
 export function resetDateLocaleCache(): void {
   dateLocaleCache = null;
+  dateLocaleDecided = null;
 }
 
 export function universalNormalize(

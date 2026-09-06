@@ -31,3 +31,17 @@ export function closeDb(): void {
     db = null;
   }
 }
+
+/** Run fn inside a single SQLite transaction (bulk inserts go from ~30 rows/s to thousands). */
+export function withTransaction<T>(fn: () => T): T {
+  const d = getDb();
+  d.exec("BEGIN IMMEDIATE");
+  try {
+    const result = fn();
+    d.exec("COMMIT");
+    return result;
+  } catch (err) {
+    try { d.exec("ROLLBACK"); } catch { /* ignore */ }
+    throw err;
+  }
+}
