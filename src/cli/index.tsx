@@ -48,7 +48,7 @@ const cli = meow(
     $ argus <command> [options]
 
   Commands
-    case "init":                            Initialize workspace (--wizard for guided setup)
+    init [--wizard]                Initialize workspace (--wizard for guided setup)
     ingest <path>                  Ingest financial data
     investigate [--type] [--watch] [--webhook URL] [--alert-min high] Run investigation engine
     findings [--status] [--type]   Browse findings
@@ -58,6 +58,7 @@ const cli = meow(
     report [--period] [--share]    Generate reports
     digest [--period]              Weekly markdown digest
     status [--fp-rate]             System health and agent FP/TP rates
+    web [--port] [--open]          Local web viewer (127.0.0.1 only)
     config                         Workspace configuration
     chat                           Interactive chat mode
 
@@ -101,6 +102,7 @@ const cli = meow(
       fpRate: { type: "boolean", default: false },
       wizard: { type: "boolean", default: false },
       currency: { type: "string" },
+      port: { type: "number", default: 7333 },
     },
   }
 );
@@ -369,6 +371,24 @@ async function main() {
         initDb(wd);
       }
       await startChat(wd);
+      break;
+    }
+
+    case "web": {
+      const wd = wsDir || cwd;
+      if (!ensureDb(wd)) { console.log("No workspace found. Run `argus init` first."); break; }
+      const { startWebServer } = await import("./commands/web");
+      const { url } = await startWebServer(wd, flags.port as number);
+      console.log(`\n  Argus web viewer: ${url}`);
+      console.log(`  Bound to 127.0.0.1 only. Press Ctrl+C to stop.`);
+      if (flags.open) {
+        try {
+          const { exec } = await import("child_process");
+          const cmd = process.platform === "win32" ? `start "" "${url}"` : process.platform === "darwin" ? `open "${url}"` : `xdg-open "${url}"`;
+          exec(cmd);
+        } catch { console.log("  (could not auto-open browser)"); }
+      }
+      await new Promise(() => {});
       break;
     }
 

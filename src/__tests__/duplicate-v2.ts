@@ -34,10 +34,10 @@ function rec(partial: Partial<{ id: string; type: any; vendorId: string; amount:
 
 function freshDb() {
   const db = getDb();
+  db.run("DELETE FROM feedback");
+  db.run("DELETE FROM findings");
   db.run("DELETE FROM financial_records");
   db.run("DELETE FROM vendors");
-  db.run("DELETE FROM findings");
-  db.run("DELETE FROM feedback");
   db.run("DELETE FROM calibration");
   db.run("DELETE FROM scratchpad_runs");
   db.run("DELETE FROM documents");
