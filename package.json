@@ -33,10 +33,12 @@
     "ink": "^7.1.0",
     "ink-spinner": "^5.0.0",
     "ink-table": "^3.1.0",
+    "ink-text-input": "^6.0.0",
     "meow": "^14.1.0",
     "pdf-parse": "^2.4.5",
     "react": "^19.2.7",
     "react-devtools-core": "^7.0.1",
+    "xlsx": "^0.18.5",
     "zod": "^4.4.3"
   }
 }
