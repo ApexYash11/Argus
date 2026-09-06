@@ -87,10 +87,10 @@ async function composeSummary(
   ).join("; ");
   const totalImpact = findings.reduce((s, f) => s + (f.impactAmount ?? 0), 0);
   const currency = findings[0]?.impactCurrency ?? "";
-  const money = totalImpact > 0 ? ` worth ${totalImpact.toLocaleString()}${currency ? ` ${currency}` : ""}` : "";
+  const money = totalImpact > 0 ? `${totalImpact.toLocaleString()}${currency ? ` ${currency}` : ""}` : "";
   const fallback = findings.length === 1
-    ? `Found 1 thing${money} worth your time: ${top}. Say \`explain 1\` and I'll walk through the evidence.`
-    : `Found ${findings.length} things${money ? `${money} in total` : ""} worth your time: ${top}${findings.length > 3 ? ", and more" : ""}. Say \`explain 1\` and I'll walk through the evidence.`;
+    ? `Found 1 thing${money ? ` worth ${money}` : ""}: ${top}. Say \`explain 1\` and I'll walk through the evidence.`
+    : `Found ${findings.length} things${money ? ` worth ${money} in total` : ""}: ${top}${findings.length > 3 ? ", and more" : ""}. Say \`explain 1\` and I'll walk through the evidence.`;
   try {
     const { pickProvider } = await import("../../model/llm");
     const provider = pickProvider();
