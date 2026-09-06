@@ -159,10 +159,18 @@ async function main() {
     case "audit": {
       const auditPath = inputArgs[0] || cwd;
       const resolvedAuditPath = path.resolve(auditPath);
-      if (!ensureDb(resolvedAuditPath)) {
+      // Single files live in their parent dir's workspace — never init inside the file.
+      let statIsDir = true;
+      try {
+        statIsDir = fs.statSync(resolvedAuditPath).isDirectory();
+      } catch {
+        statIsDir = true;
+      }
+      const workspaceDir = statIsDir ? resolvedAuditPath : path.dirname(resolvedAuditPath);
+      if (!ensureDb(workspaceDir)) {
         console.log("Initializing workspace...");
-        await initWorkspace(resolvedAuditPath, flags.company || "My Company");
-        ensureDb(resolvedAuditPath);
+        await initWorkspace(workspaceDir, flags.company || "My Company");
+        ensureDb(workspaceDir);
       }
       const alertMin = ["critical", "high", "warning", "info"].includes(String(flags.alertMin))
         ? (flags.alertMin as "critical" | "high" | "warning" | "info")

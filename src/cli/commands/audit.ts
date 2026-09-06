@@ -144,7 +144,7 @@ export async function* audit(
   const singleFile = isDir ? null : resolvedPath;
 
   const auditStartTime = performance.now();
-  initScratchpad(resolvedPath);
+  initScratchpad(searchPath);
 
   yield { type: "step", agent: "audit", message: `Scanning ${searchPath} for financial data files...` };
 
@@ -204,7 +204,7 @@ export async function* audit(
   // Idempotency: skip re-ingesting files that haven't changed since the last
   // audit of this workspace. `audit --share` on unchanged data then finishes
   // in seconds instead of re-running the whole pipeline.
-  const manifest = readIngestManifest(resolvedPath);
+  const manifest = readIngestManifest(searchPath);
   const currentSig = fileSignature(knownFiles.map((c) => c.filePath));
   const unchanged = !options.forceRefresh && manifest !== null && signaturesEqual(manifest.files, currentSig);
   const toIngest = unchanged ? [] : knownFiles;
@@ -215,7 +215,7 @@ export async function* audit(
     const c = toIngest[i]!;
     yield { type: "step", agent: "audit", message: `[${i + 1}/${toIngest.length}] Ingesting ${path.basename(c.filePath)}...` };
     try {
-      const ingestStream = await ingestFile(resolvedPath, c.filePath);
+      const ingestStream = await ingestFile(searchPath, c.filePath);
       for await (const event of ingestStream) {
         if (event.type === "step") {
           if (event.message.startsWith("Quality flags:")) {
@@ -239,7 +239,7 @@ export async function* audit(
 
   let totalFindings = 0;
   try {
-    const investigateStream = await investigate(resolvedPath, options.agentType, false, {
+    const investigateStream = await investigate(searchPath, options.agentType, false, {
       webhookUrl: options.webhookUrl,
       alertMin: options.alertMin,
     });
@@ -258,10 +258,10 @@ export async function* audit(
     yield { type: "step", agent: "audit", message: `Investigation error: ${err.message}` };
   }
 
-  pruneScratchpad(resolvedPath);
+  pruneScratchpad(searchPath);
 
   if (!unchanged && ingestCount > 0) {
-    writeIngestManifest(resolvedPath, currentSig);
+    writeIngestManifest(searchPath, currentSig);
   }
 
   yield { type: "step", agent: "audit", message: "" };
