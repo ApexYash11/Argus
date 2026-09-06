@@ -1,6 +1,6 @@
 {
   "name": "argus-audit",
-  "version": "0.1.2",
+  "version": "0.1.3",
   "description": "Autonomous financial investigation system for startups",
   "type": "module",
   "module": "src/cli/index.tsx",
