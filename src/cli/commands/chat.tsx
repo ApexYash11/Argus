@@ -85,16 +85,19 @@ async function composeSummary(
   const top = findings.slice(0, 3).map((f) =>
     `${f.severity} ${f.agentType} at ${f.vendorId ?? "unknown vendor"} (${f.impactAmount ?? 0} ${f.impactCurrency ?? ""}, ${Math.round(f.confidence * 100)}%)`
   ).join("; ");
+  const totalImpact = findings.reduce((s, f) => s + (f.impactAmount ?? 0), 0);
+  const currency = findings[0]?.impactCurrency ?? "";
+  const money = totalImpact > 0 ? ` worth ${totalImpact.toLocaleString()}${currency ? ` ${currency}` : ""}` : "";
   const fallback = findings.length === 1
-    ? `Found 1 thing worth your time: ${top}. Say \`explain 1\` and I'll walk through the evidence.`
-    : `Found ${findings.length} things worth your time: ${top}${findings.length > 3 ? ", and more" : ""}. Say \`explain 1\` and I'll walk through the evidence.`;
+    ? `Found 1 thing${money} worth your time: ${top}. Say \`explain 1\` and I'll walk through the evidence.`
+    : `Found ${findings.length} things${money ? `${money} in total` : ""} worth your time: ${top}${findings.length > 3 ? ", and more" : ""}. Say \`explain 1\` and I'll walk through the evidence.`;
   try {
     const { pickProvider } = await import("../../model/llm");
     const provider = pickProvider();
     if (provider.name === "local") return fallback;
     const reply = await provider.complete([
-      { role: "system", content: "You are Argus, a financial investigator. Write ONE short paragraph (max 3 sentences, plain words, no jargon, no markdown headers) summarizing these findings for a founder. End with which one to look at first." },
-      { role: "user", content: `Scope: ${agent ?? "all agents"}. Findings: ${top}. Total: ${findings.length}.` },
+      { role: "system", content: "You are Argus, a financial investigator. Write ONE short paragraph (max 3 sentences, plain words, no jargon, no markdown headers) summarizing these findings for a founder. Name the total money at stake. End with which one to look at first." },
+      { role: "user", content: `Scope: ${agent ?? "all agents"}. Findings: ${top}. Total: ${findings.length}. Money at stake: ${money || "unknown"}.` },
     ]);
     const clean = reply.replace(/^FINAL:\s*/i, "").trim();
     return clean.length > 0 ? clean : fallback;
