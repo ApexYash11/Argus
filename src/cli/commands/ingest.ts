@@ -274,11 +274,13 @@ async function* newPipeline(filePath: string, options: IngestOptions): AsyncGene
         allQualityFlags.set(f, (allQualityFlags.get(f) ?? 0) + 1);
       }
 
-      // Inject quality into raw JSON
-      let rawStr = JSON.stringify(rawRow);
+      // Inject quality into raw JSON (single stringify — was: two per row)
+      let rawStr: string;
       try {
         rawStr = JSON.stringify({ ...rawRow, _quality: qualityFlags });
-      } catch { /* use raw */ }
+      } catch {
+        rawStr = JSON.stringify(rawRow);
+      }
 
       // Build mock _raw record for existing normalizeRecord
       const mockRaw: Record<string, unknown> = {

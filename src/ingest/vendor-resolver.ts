@@ -32,6 +32,7 @@ const SEED_VENDORS: Array<{ name: string; aliases: string[] }> = [
 ];
 
 const seeded = new Set<string>();
+let seededDone = false;
 
 // In-memory vendor cache: resolveVendor() is called per row, and each call
 // used to do 2 full-table scans + upserts (~100 rows/s on large files).
@@ -41,6 +42,7 @@ let vendorCache: Vendor[] | null = null;
 export function clearVendorCache(): void {
   vendorCache = null;
   resolutionCache.clear();
+  seededDone = false;
 }
 
 // Memoize per raw name: repeated vendor names (the common case) skip the
@@ -48,8 +50,30 @@ export function clearVendorCache(): void {
 const resolutionCache = new Map<string, { vendorId: string; canonicalName: string; confidence: number; method: "seed" | "fuzzy" | "llm" | "new" }>();
 
 function allCached(): Vendor[] {
-  if (!vendorCache) vendorCache = getAllVendors();
+  if (!vendorCache) {
+    vendorCache = getAllVendors();
+    rebuildExactIndex();
+  }
   return vendorCache;
+}
+
+// Exact-match hash index: normalized alias -> vendor. Rebuilt on cache load,
+// extended incrementally on upsert. Makes repeated AND unique names O(1) for
+// the exact path; only true misses pay for fuzzy.
+let exactIndex = new Map<string, Vendor>();
+
+function indexVendor(v: Vendor): void {
+  exactIndex.set(v.canonicalName.toLowerCase(), v);
+  exactIndex.set(normalizeName(v.canonicalName), v);
+  for (const a of v.aliases) {
+    exactIndex.set(a.toLowerCase(), v);
+    exactIndex.set(normalizeName(a), v);
+  }
+}
+
+function rebuildExactIndex(): void {
+  exactIndex = new Map();
+  for (const v of vendorCache ?? []) indexVendor(v);
 }
 
 function cacheUpsert(v: Vendor): void {
@@ -57,6 +81,13 @@ function cacheUpsert(v: Vendor): void {
   const idx = vendorCache.findIndex((x) => x.id === v.id);
   if (idx >= 0) vendorCache[idx] = v;
   else vendorCache.push(v);
+  indexVendor(v);
+}
+
+/** Upper bound on dice(a,b) from lengths alone — skip pairs that can't reach 0.6. */
+function diceCeiling(la: number, lb: number): number {
+  if (la < 2 || lb < 2) return 0;
+  return (2 * (Math.min(la, lb) - 1)) / (la + lb - 2);
 }
 
 function seedVendorId(name: string): string {
@@ -65,6 +96,8 @@ function seedVendorId(name: string): string {
 }
 
 function seedVendors(): void {
+  if (seededDone) return;
+  seededDone = true;
   const existing = allCached();
   const existingNames = new Set(existing.map((v) => v.canonicalName.toLowerCase()));
   const existingAliases = new Set(existing.flatMap((v) => v.aliases.map((a) => a.toLowerCase())));
@@ -142,29 +175,50 @@ function resolveVendorUncached(rawName: string): { vendorId: string; canonicalNa
   const vendors = allCached();
   const normalized = normalizeName(rawName);
 
-  for (const v of vendors) {
-    for (const alias of v.aliases) {
-      if (alias.toLowerCase() === rawName.toLowerCase()) {
-        return { vendorId: v.id, canonicalName: v.canonicalName, confidence: 1.0, method: "seed" };
-      }
-    }
+  // O(1) exact path (covers seed + previously-added aliases, raw or normalized)
+  const exact = exactIndex.get(rawName.toLowerCase()) ?? exactIndex.get(normalized);
+  if (exact) {
+    return { vendorId: exact.id, canonicalName: exact.canonicalName, confidence: 1.0, method: "seed" };
   }
 
+  // Date-like / numeric vendor names are data-shape artifacts (e.g. a date
+  // column misdetected as vendor). Fuzzy-matching them against real vendors
+  // is both slow (full scan per unique value) and wrong (they matched!).
+  // File them as new vendors directly.
+  const trimmed = rawName.trim();
+  const looksDatelike = trimmed.length >= 6 && !isNaN(Date.parse(trimmed));
+  const looksNumeric = trimmed !== "" && !isNaN(Number(trimmed));
+  if (looksDatelike || looksNumeric) {
+    return newVendorFor(rawName);
+  }
+
+  // Bounded fuzzy: length prefilter skips pairs whose dice ceiling < 0.6.
+  // Normalized alias strings are computed once per vendor here, not per row.
   let bestScore = 0;
   let bestVendor: Vendor | null = null;
+  const normCache = new Map<string, string>();
+  const normOf = (s: string): string => {
+    let n = normCache.get(s);
+    if (n === undefined) { n = normalizeName(s); normCache.set(s, n); }
+    return n;
+  };
   for (const v of vendors) {
-    const vNorm = normalizeName(v.canonicalName);
-    for (const alias of v.aliases) {
-      const score = diceCoefficient(normalized, normalizeName(alias));
+    const vNorm = normOf(v.canonicalName);
+    if (diceCeiling(normalized.length, vNorm.length) >= 0.6) {
+      const score = diceCoefficient(normalized, vNorm);
       if (score > bestScore) {
         bestScore = score;
         bestVendor = v;
       }
     }
-    const score = diceCoefficient(normalized, vNorm);
-    if (score > bestScore) {
-      bestScore = score;
-      bestVendor = v;
+    for (const alias of v.aliases) {
+      const aNorm = normOf(alias);
+      if (diceCeiling(normalized.length, aNorm.length) < 0.6) continue;
+      const score = diceCoefficient(normalized, aNorm);
+      if (score > bestScore) {
+        bestScore = score;
+        bestVendor = v;
+      }
     }
   }
 
@@ -182,6 +236,11 @@ function resolveVendorUncached(rawName: string): { vendorId: string; canonicalNa
   }
 
   const newId = seedVendorId(rawName);
+  return newVendorFor(rawName, newId);
+}
+
+function newVendorFor(rawName: string, id?: string): { vendorId: string; canonicalName: string; confidence: number; method: "new" } {
+  const newId = id ?? seedVendorId(rawName);
   const newVendor: Vendor = {
     id: newId,
     canonicalName: rawName,
