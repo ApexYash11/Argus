@@ -33,15 +33,35 @@ export function closeDb(): void {
 }
 
 /** Run fn inside a single SQLite transaction (bulk inserts go from ~30 rows/s to thousands). */
-export function withTransaction<T>(fn: () => T): T {
+export function withTransaction<T>(fn: () => T, retries = 3): T {
   const d = getDb();
-  d.exec("BEGIN IMMEDIATE");
-  try {
-    const result = fn();
-    d.exec("COMMIT");
-    return result;
-  } catch (err) {
-    try { d.exec("ROLLBACK"); } catch { /* ignore */ }
-    throw err;
+  let attempt = 0;
+  for (;;) {
+    try {
+      d.exec("BEGIN IMMEDIATE");
+      try {
+        const result = fn();
+        d.exec("COMMIT");
+        return result;
+      } catch (err) {
+        try { d.exec("ROLLBACK"); } catch { /* ignore */ }
+        throw err;
+      }
+    } catch (err: any) {
+      const busy = /locked|busy|busy_timeout/i.test(err?.message ?? "");
+      if (busy && attempt < retries) {
+        attempt++;
+        const wait = 100 * 4 ** (attempt - 1);
+        const start = Date.now();
+        while (Date.now() - start < wait) { /* brief backoff */ }
+        continue;
+      }
+      if (busy) {
+        throw new Error(
+          "database is locked — another argus process (audit, web, or chat) is likely still running. Close it and retry."
+        );
+      }
+      throw err;
+    }
   }
 }

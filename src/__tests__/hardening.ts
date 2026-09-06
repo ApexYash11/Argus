@@ -58,7 +58,8 @@ async function main() {
   assert(count >= 2, `partial rows ingested despite bad rows (got ${count})`);
   closeDb();
 
-  // 2. Concurrent writers: two processes ingesting different files
+  // 2. Concurrent writers: two processes auditing different files (ingest
+  // verb was folded into audit; this also exercises the idempotent manifest).
   const dir2 = mkTemp();
   await initWorkspace(dir2, "Race Co");
   closeDb();
@@ -67,14 +68,14 @@ async function main() {
   fs.writeFileSync(a, "date,vendor_name,amount,reference,cleared\n2025-01-05,Alpha,100,A1,yes\n2025-01-06,Alpha,200,A2,yes\n");
   fs.writeFileSync(b, "date,vendor_name,amount,reference,cleared\n2025-02-05,Beta,300,B1,yes\n2025-02-06,Beta,400,B2,yes\n");
   const run = (file: string) => new Promise<{ code: number; out: string }>((resolve) => {
-    const child = spawn("bun", ["run", "src/cli/index.tsx", "--dir", dir2, "ingest", file], { cwd: "D:\\Argus" });
+    const child = spawn("bun", ["run", "src/cli/index.tsx", "--dir", dir2, "audit", file], { cwd: "D:\\Argus" });
     let out = "";
     child.stdout?.on("data", (d) => { out += d.toString(); });
     child.stderr?.on("data", (d) => { out += d.toString(); });
     child.on("close", (code) => resolve({ code: code ?? -1, out }));
   });
   const [r1, r2] = await Promise.all([run(a), run(b)]);
-  assert(r1.code === 0 && r2.code === 0, `concurrent ingests both exit 0 (got ${r1.code}, ${r2.code})`);
+  assert(r1.code === 0 && r2.code === 0, `concurrent audits both exit 0 (got ${r1.code}, ${r2.code})`);
   initDb(dir2);
   const total = (getDb().query("SELECT COUNT(*) as c FROM financial_records").get() as { c: number }).c;
   assert(total === 4, `all 4 rows present after race (got ${total})`);
