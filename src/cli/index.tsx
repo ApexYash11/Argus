@@ -16,7 +16,7 @@ import { initDb } from "../db/index";
 import "../agents/index";
 import fs from "fs";
 import path from "path";
-import { BANNER, WORDMARK, VERSION } from "./theme";
+import { VERSION } from "./theme";
 
 function c(n: number) { return (s: string) => `\x1b[38;5;${n}m${s}\x1b[0m`; }
 const col = { cyan: c(81), green: c(78), gray: c(245), label: c(110), white: c(231), red: c(196) };
@@ -58,6 +58,8 @@ const cli = meow(
     $ argus audit ./your-exports/
     $ argus findings --status open
     $ argus chat
+
+  Tip: every command starts with argus.
 `,
   {
     importMeta: import.meta,
@@ -123,7 +125,11 @@ async function main() {
         await waitUntilExit;
       } else {
         await initWorkspace(cwd, flags.company, { currency: flags.currency as string | undefined });
-        console.log("Workspace initialized.");
+        console.log("\n  Workspace ready. What next?");
+        console.log("    1. argus audit ./your-exports/   Check your spending");
+        console.log("    2. argus findings                See what was found");
+        console.log("    3. argus chat                    Ask in plain English");
+        console.log("\n  Tip: every command starts with `argus`. Try `argus --help`.");
       }
       break;
 
@@ -346,17 +352,23 @@ async function main() {
         console.log(`  \`argus ${command}\` was folded into \`argus audit\` — run \`argus audit <path> [--share] [--type <agent>]\`.`);
         break;
       }
-      console.log(BANNER.join("\n"));
-      console.log(`  ${col.gray(VERSION)}  ${col.cyan(WORDMARK)}`);
       if (!wsDir) {
-        console.log(`\n  ${col.gray("No workspace detected.")}`);
-        console.log(`  ${col.cyan("argus init --company \"Your Co\"")}  ${col.gray("initialize")}`);
-        console.log(`  ${col.cyan("argus chat")}              ${col.gray("interactive mode")}`);
-        console.log(`  ${col.cyan("argus --help")}            ${col.gray("all commands")}`);
+        console.log(`\n  ${col.cyan("ARGUS")} ${col.gray(VERSION)} — autonomous spend investigator`);
+        console.log(`\n  ${col.white("Start here:")}`);
+        console.log(`    1. ${col.cyan("argus init")}              Set up this folder`);
+        console.log(`    2. ${col.cyan("argus audit ./exports/")}  Check your spending`);
+        console.log(`    3. ${col.cyan("argus chat")}              Ask in plain English`);
+        console.log(`\n  ${col.gray("Tip: every command starts with `argus`. Full list: `argus --help`.")}`);
       } else {
         ensureDb(wsDir);
         const status = await getStatus();
-        console.log(`\n  ${col.green("\u25CF")} ${col.label("Records")} ${col.white(String(status.recordCount))}    ${col.cyan("\u25CF")} ${col.label("Vendors")} ${col.white(String(status.vendorCount))}`);
+        console.log(`\n  ${col.cyan("ARGUS")} ${col.gray(VERSION)}`);
+        console.log(`  ${col.green("\u25CF")} ${col.label("Records")} ${col.white(String(status.recordCount))}    ${col.cyan("\u25CF")} ${col.label("Vendors")} ${col.white(String(status.vendorCount))}`);
+        if (status.recordCount === 0) {
+          console.log(`\n  ${col.white("Next:")} ${col.cyan("argus audit ./your-exports/")}  ${col.gray("then `argus findings`")}`);
+        } else {
+          console.log(`  ${col.gray("Try:")} ${col.cyan("argus findings")}  ${col.cyan("argus chat")}  ${col.cyan("argus audit --share")}`);
+        }
         if (wsDir !== path.resolve(cwd)) {
           console.log(`  ${col.gray("Workspace:")} ${wsDir}`);
         }

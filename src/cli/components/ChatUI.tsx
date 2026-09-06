@@ -5,7 +5,7 @@ import TextInput from "ink-text-input";
 import type { ChatEvent } from "../../model/types";
 import { handleChatMessage } from "../commands/chat";
 import type { ChatContext } from "../commands/chat";
-import { C, SYM, VERSION, WORDMARK } from "../theme";
+import { BANNER, C, SYM, VERSION } from "../theme";
 import path from "path";
 
 const SLASH_COMMANDS = [
@@ -55,6 +55,7 @@ interface Message {
   type: ChatEvent["type"];
   text: string;
   isUser: boolean;
+  accent?: boolean;
 }
 
 export default function ChatUI({ cwd, chatCtx }: { cwd: string; chatCtx: ChatContext }) {
@@ -89,7 +90,8 @@ export default function ChatUI({ cwd, chatCtx }: { cwd: string; chatCtx: ChatCon
     const prov = (process.env.OPENROUTER_API_KEY ? "openrouter" : process.env.GROQ_API_KEY ? "groq" : "local") as "openrouter" | "groq" | "local";
     const model = process.env.OPENROUTER_MODEL ?? (prov === "openrouter" ? "openrouter/free" : prov);
     const lines: Message[] = [
-      { id: msgId.current++, type: "agent_thinking" as const, text: `${WORDMARK} ${VERSION} ${SYM.dot} ${base}`, isUser: false },
+      ...BANNER.map((line) => ({ id: msgId.current++, type: "agent_thinking" as const, text: line, isUser: false, accent: true })),
+      { id: msgId.current++, type: "agent_thinking" as const, text: `ARGUS ${VERSION} ${SYM.dot} ${base}`, isUser: false },
     ];
     if (prov === "local") {
       lines.push({ id: msgId.current++, type: "agent_thinking" as const, text: `${SYM.warn} LLM: local fallback (deterministic, no chat reasoning). Set OPENROUTER_API_KEY in .env to unlock agent chat.`, isUser: false });
@@ -316,6 +318,7 @@ export default function ChatUI({ cwd, chatCtx }: { cwd: string; chatCtx: ChatCon
 
   function msgColor(msg: Message): string | undefined {
     if (msg.isUser) return C.blue;
+    if (msg.accent) return C.cyan;
     switch (msg.type) {
       case "error": return C.red;
       case "llm_chunk": return C.base;
