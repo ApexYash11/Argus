@@ -17,6 +17,7 @@ export function initDb(workspaceDir: string): Database {
   db = new Database(dbPath);
   db.exec("PRAGMA journal_mode = WAL");
   db.exec("PRAGMA foreign_keys = ON");
+  db.exec("PRAGMA busy_timeout = 5000");
   db.exec(SCHEMA_SQL);
   // Migrations
   try { db.exec("ALTER TABLE findings ADD COLUMN recommendation TEXT"); } catch {}
