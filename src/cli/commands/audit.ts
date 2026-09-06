@@ -11,6 +11,52 @@ import { getCacheStats } from "../../ingest/schema-detector";
 
 const SUPPORTED_EXTS = new Set([".csv", ".xlsx", ".pdf"]);
 
+type FileSig = Record<string, { mtimeMs: number; size: number }>;
+
+function manifestPath(workspaceDir: string): string {
+  return path.join(workspaceDir, ".audit", "last-ingest.json");
+}
+
+function fileSignature(files: string[]): FileSig {
+  const sig: FileSig = {};
+  for (const f of files) {
+    try {
+      const st = fs.statSync(f);
+      sig[path.resolve(f)] = { mtimeMs: Math.round(st.mtimeMs), size: st.size };
+    } catch {
+      sig[path.resolve(f)] = { mtimeMs: -1, size: -1 };
+    }
+  }
+  return sig;
+}
+
+function signaturesEqual(a: FileSig, b: FileSig): boolean {
+  const ka = Object.keys(a).sort();
+  const kb = Object.keys(b).sort();
+  if (ka.length !== kb.length || ka.some((k, i) => k !== kb[i])) return false;
+  return ka.every((k) => a[k]!.mtimeMs === b[k]!.mtimeMs && a[k]!.size === b[k]!.size);
+}
+
+function readIngestManifest(workspaceDir: string): { files: FileSig } | null {
+  try {
+    const raw = fs.readFileSync(manifestPath(workspaceDir), "utf-8");
+    const parsed = JSON.parse(raw) as { files?: FileSig };
+    if (!parsed || typeof parsed.files !== "object") return null;
+    return { files: parsed.files };
+  } catch {
+    return null;
+  }
+}
+
+function writeIngestManifest(workspaceDir: string, files: FileSig): void {
+  try {
+    fs.mkdirSync(path.join(workspaceDir, ".audit"), { recursive: true });
+    fs.writeFileSync(manifestPath(workspaceDir), JSON.stringify({ files, ingestedAt: new Date().toISOString() }));
+  } catch {
+    // manifest is best-effort
+  }
+}
+
 function scanDirectory(dir: string): string[] {
   const results: string[] = [];
   function walk(current: string) {
@@ -154,9 +200,20 @@ export async function* audit(
 
   let ingestCount = 0;
   const qualityFlagTotals = new Map<string, number>();
-  for (let i = 0; i < knownFiles.length; i++) {
-    const c = knownFiles[i]!;
-    yield { type: "step", agent: "audit", message: `[${i + 1}/${knownFiles.length}] Ingesting ${path.basename(c.filePath)}...` };
+
+  // Idempotency: skip re-ingesting files that haven't changed since the last
+  // audit of this workspace. `audit --share` on unchanged data then finishes
+  // in seconds instead of re-running the whole pipeline.
+  const manifest = readIngestManifest(resolvedPath);
+  const currentSig = fileSignature(knownFiles.map((c) => c.filePath));
+  const unchanged = !options.forceRefresh && manifest !== null && signaturesEqual(manifest.files, currentSig);
+  const toIngest = unchanged ? [] : knownFiles;
+  if (unchanged && knownFiles.length > 0) {
+    yield { type: "step", agent: "audit", message: `0 new/changed files — reusing existing records (use --force to re-ingest).` };
+  }
+  for (let i = 0; i < toIngest.length; i++) {
+    const c = toIngest[i]!;
+    yield { type: "step", agent: "audit", message: `[${i + 1}/${toIngest.length}] Ingesting ${path.basename(c.filePath)}...` };
     try {
       const ingestStream = await ingestFile(resolvedPath, c.filePath);
       for await (const event of ingestStream) {
@@ -178,7 +235,7 @@ export async function* audit(
     }
   }
 
-  yield { type: "step", agent: "audit", message: `Ingested ${ingestCount}/${classified.length} files. Starting investigation...` };
+  yield { type: "step", agent: "audit", message: `Ingested ${ingestCount}/${toIngest.length} new file(s). Starting investigation...` };
 
   let totalFindings = 0;
   try {
@@ -203,12 +260,16 @@ export async function* audit(
 
   pruneScratchpad(resolvedPath);
 
+  if (!unchanged && ingestCount > 0) {
+    writeIngestManifest(resolvedPath, currentSig);
+  }
+
   yield { type: "step", agent: "audit", message: "" };
   yield { type: "step", agent: "audit", message: "=== Audit Summary ===" };
   yield { type: "step", agent: "audit", message: `Files discovered:  ${candidates.length}` };
   yield { type: "step", agent: "audit", message: `Files classified:  ${classified.length}` };
   yield { type: "step", agent: "audit", message: `Files ingested:    ${ingestCount}` };
-  yield { type: "step", agent: "audit", message: `Findings:          ${totalFindings}` };
+  yield { type: "step", agent: "audit", message: `Findings (new):    ${totalFindings} (see \`argus findings\` for all)` };
   if (qualityFlagTotals.size > 0) {
     const qualitySummary = [...qualityFlagTotals.entries()]
       .sort((a, b) => b[1] - a[1])

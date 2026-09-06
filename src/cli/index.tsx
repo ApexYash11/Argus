@@ -170,6 +170,7 @@ async function main() {
       const stream = audit(resolvedAuditPath, {
         dryRun: flags.dryRun,
         nonInteractive: flags.nonInteractive,
+        forceRefresh: flags.force as boolean,
         agentType: flags.type as any,
         webhookUrl: flags.webhook as string | undefined,
         alertMin,

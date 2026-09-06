@@ -38,4 +38,20 @@ export const BANNER = [
 
 export const WORDMARK = '\u2578ARGUS\u257A';
 
-export const VERSION = 'v1.0.0-alpha';
+let cachedVersion: string | null = null;
+
+/** Single source of truth: version always matches package.json. */
+export function getVersion(): string {
+  if (cachedVersion) return cachedVersion;
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const pkg = require("../../package.json") as { version?: string };
+    cachedVersion = typeof pkg.version === "string" ? pkg.version : "0.0.0";
+  } catch {
+    cachedVersion = "0.0.0";
+  }
+  return cachedVersion;
+}
+
+/** @deprecated Use getVersion() — kept for existing imports. */
+export const VERSION = getVersion();
