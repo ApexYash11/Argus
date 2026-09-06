@@ -142,6 +142,7 @@ export type ChatEvent =
   | { type: "tool_start"; tool: string; args: string; toolCallId: string }
   | { type: "tool_end"; tool: string; summary: string; durationMs: number; toolCallId: string }
   | { type: "tool_error"; tool: string; error: string; toolCallId: string }
+  | { type: "finding_card"; finding: Finding }
   | { type: "llm_chunk"; text: string }
   | { type: "llm_done"; fullText: string }
   | { type: "done"; totalFindings?: number; durationMs: number }

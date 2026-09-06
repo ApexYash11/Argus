@@ -1,10 +1,74 @@
 import React from "react";
 import path from "path";
 import fs from "fs";
-import type { ChatEvent, FinancialEvent } from "../../model/types";
+import type { ChatEvent, FinancialEvent, AgentType } from "../../model/types";
 import { runSupervisor } from "../../agents/supervisor";
 import { ingestFile } from "./ingest";
 import { getFindings, getFindingById, getRecordCount, getAllVendors } from "../../db/queries";
+
+const AGENT_KEYWORDS: Array<{ agent: AgentType; words: string[] }> = [
+  { agent: "anomaly-detection", words: ["anomaly", "anomalies", "spike", "outlier", "unusual"] },
+  { agent: "duplicate-payments", words: ["duplicate", "duplicates", "double-paid", "double paid", "paid twice"] },
+  { agent: "saas-waste", words: ["saas", "subscription", "subscriptions", "seat", "seats", "waste", "zombie", "unused"] },
+  { agent: "vendor-overbilling", words: ["overbill", "overcharge", "contract", "vendor"] },
+  { agent: "policy-violations", words: ["policy", "policies", "receipt", "per-diem", "per diem", "expense"] },
+  { agent: "reconciliation", words: ["reconcil", "mismatch", "orphan", "invoice"] },
+  { agent: "cashflow-risk", words: ["cash", "runway", "burn", "cashflow", "cash flow"] },
+];
+
+/** Map free text ("run anomaly detection") to a single agent. Null = run all. */
+export function detectAgentFromQuery(lower: string): AgentType | null {
+  for (const { agent, words } of AGENT_KEYWORDS) {
+    if (words.some((w) => lower.includes(w))) return agent;
+  }
+  return null;
+}
+
+/** Compact investigation: one line per agent + findings + summary. No engine spam. */
+async function* runCompactInvestigation(
+  ctx: ChatContext,
+  agent: AgentType | null,
+  signal?: AbortSignal
+): AsyncGenerator<ChatEvent> {
+  yield { type: "agent_thinking", message: agent ? `Running ${agent}…` : "Running all agents…" };
+  const trigger: FinancialEvent = {
+    type: "daily_tick",
+    timestamp: new Date().toISOString(),
+  };
+  const stream = await runSupervisor(ctx.cwd, trigger, agent ?? undefined, undefined, signal);
+  const perAgent: string[] = [];
+  let current: string | null = null;
+  let findings = 0;
+  for await (const event of stream) {
+    if (signal?.aborted) break;
+    switch (event.type) {
+      case "agent_start":
+        current = event.agent;
+        break;
+      case "step":
+        if (/^error:/i.test(event.message)) {
+          yield { type: "agent_thinking", message: `${current ?? event.agent}: ${event.message}` };
+        }
+        break;
+      case "agent_skipped":
+        perAgent.push(`${event.agent}: skipped (${event.reason})`);
+        break;
+      case "finding":
+        findings++;
+        yield { type: "finding_card", finding: event.finding };
+        break;
+      case "confidence":
+        break;
+      case "done":
+        break;
+    }
+  }
+  if (perAgent.length > 0) {
+    yield { type: "agent_thinking", message: `Checked: ${perAgent.join(", ")}.` };
+  }
+  yield { type: "agent_thinking", message: findings > 0 ? `Done — ${findings} finding(s). Ask me to explain any ID.` : "Done — no new findings. Previously dismissed items stay dismissed." };
+  yield { type: "done", totalFindings: findings, durationMs: 0 };
+}
 
 export interface ChatContext {
   cwd: string;
@@ -25,10 +89,11 @@ export async function* handleChatMessage(
       case "findings": {
         const findings = getFindings();
         if (findings.length === 0) {
-          yield { type: "agent_thinking", message: "No findings found." };
+          yield { type: "agent_thinking", message: "No findings yet — run `audit` on a folder first." };
         } else {
-          for (const f of findings) {
-            yield { type: "agent_thinking", message: `${f.id} | ${f.title} | [${f.severity}] ${(f.confidence * 100).toFixed(0)}% \u2014 ${f.status}` };
+          yield { type: "agent_thinking", message: `Found ${findings.length} finding(s):` };
+          for (const f of findings.slice(0, 10)) {
+            yield { type: "finding_card", finding: f };
           }
         }
         yield { type: "done", durationMs: 0 };
@@ -36,29 +101,8 @@ export async function* handleChatMessage(
       }
       case "investigate":
       case "run": {
-        yield { type: "agent_thinking", message: "Starting investigation..." };
-        const trigger: FinancialEvent = {
-          type: "daily_tick",
-          timestamp: new Date().toISOString(),
-        };
-        const stream = await runSupervisor(ctx.cwd, trigger, undefined, undefined, signal);
-        for await (const event of stream) {
-          switch (event.type) {
-            case "agent_start":
-              yield { type: "agent_thinking", message: event.description };
-              break;
-            case "step":
-              yield { type: "agent_thinking", message: event.message };
-              break;
-            case "finding":
-              yield { type: "agent_thinking", message: `${event.finding.id} | ${event.finding.title} | [${event.finding.severity}] ${(event.finding.confidence * 100).toFixed(0)}%` };
-              break;
-            case "done":
-              yield { type: "done", totalFindings: event.totalFindings, durationMs: event.durationMs };
-              return;
-          }
-        }
-        yield { type: "done", durationMs: 0 };
+        const rest = parts.slice(1).join(" ").toLowerCase();
+        yield* runCompactInvestigation(ctx, detectAgentFromQuery(rest), signal);
         return;
       }
       case "cd": {
@@ -134,29 +178,7 @@ export async function* handleChatMessage(
   }
 
   if (/^(investigate|check|run)\b/.test(lower)) {
-    yield { type: "agent_thinking", message: "Starting investigation..." };
-    const trigger: FinancialEvent = {
-      type: "daily_tick",
-      timestamp: new Date().toISOString(),
-    };
-    const stream = await runSupervisor(ctx.cwd, trigger, undefined, undefined, signal);
-    for await (const event of stream) {
-      switch (event.type) {
-        case "agent_start":
-          yield { type: "agent_thinking", message: event.description };
-          break;
-        case "step":
-          yield { type: "agent_thinking", message: event.message };
-          break;
-        case "finding":
-          yield { type: "agent_thinking", message: `${event.finding.id} | ${event.finding.title} | [${event.finding.severity}] ${(event.finding.confidence * 100).toFixed(0)}%` };
-          break;
-        case "done":
-          yield { type: "done", totalFindings: event.totalFindings, durationMs: event.durationMs };
-          return;
-      }
-    }
-    yield { type: "done", durationMs: 0 };
+    yield* runCompactInvestigation(ctx, detectAgentFromQuery(lower), signal);
     return;
   }
 
