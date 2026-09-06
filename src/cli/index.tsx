@@ -5,13 +5,11 @@ import React from "react";
 import { render } from "ink";
 import App from "./App";
 import { initWorkspace } from "./commands/init";
-import { ingestFile } from "./commands/ingest";
-import { investigate, stopWatcher } from "./commands/investigate";
+import { stopWatcher } from "./commands/investigate";
 import { listFindings } from "./commands/findings";
 import { explainFinding } from "./commands/explain";
 import { submitFeedback } from "./commands/feedback";
 import { getStatus } from "./commands/status";
-import { generateReport } from "./commands/report";
 import { startChat } from "./commands/chat";
 import { audit } from "./commands/audit";
 import { initDb } from "../db/index";
@@ -49,23 +47,19 @@ const cli = meow(
 
   Commands
     init [--wizard]                Initialize workspace (--wizard for guided setup)
-    ingest <path>                  Ingest financial data
-    investigate [--type] [--watch] [--webhook URL] [--alert-min high] Run investigation engine
+    audit [path] [--share]         Ingest + investigate a file or folder (main verb)
     findings [--status] [--type]   Browse findings
-    audit [path] [--dry-run]       Discover, classify, ingest, and investigate (main verb)
     explain <finding-id>           Deep-dive a finding
     feedback <finding-id>          Submit review action
-    report [--period] [--share]    Generate reports
     digest [--period]              Weekly markdown digest
     status [--fp-rate]             System health and agent FP/TP rates
     web [--port] [--open]          Local web viewer (127.0.0.1 only)
-    config                         Workspace configuration
     chat                           Interactive chat mode
 
   Examples
     $ argus init --company "Acme Corp"
-    $ argus ingest ./your-data.csv
-    $ argus investigate
+    $ argus audit ./your-exports/
+    $ argus audit --share
     $ argus findings --status open --severity critical
     $ argus explain FINDING-003 --trace
     $ argus feedback FINDING-003 --resolve "Fixed with vendor"
@@ -154,46 +148,7 @@ async function main() {
       console.log(`  argus status     — system overview`);
       console.log(`  argus findings   — see what was found`);
       console.log(`  argus chat       — ask in plain English`);
-      console.log(`  argus report --share — shareable HTML`);
-      break;
-    }
-
-    case "ingest": {
-      const wd = wsDir || cwd;
-      if (!ensureDb(wd)) {
-        await initWorkspace(wd, flags.company || "My Company");
-        ensureDb(wd);
-      }
-      const filePath = inputArgs[0];
-      if (!filePath) {
-        console.error("Error: specify a file path to ingest");
-        process.exit(1);
-      }
-      const stream = await ingestFile(wd, filePath, {
-        type: (flags.schema ?? flags.type) as string | undefined,
-        force: flags.force as boolean,
-        dryRun: flags.dryRun as boolean,
-      });
-      for await (const event of stream) {
-        if (event.type === "step") console.log(`  ${event.message}`);
-      }
-      break;
-    }
-
-    case "investigate": {
-      const wd = wsDir || cwd;
-      ensureDb(wd);
-      const alertMin = ["critical", "high", "warning", "info"].includes(String(flags.alertMin))
-        ? (flags.alertMin as "critical" | "high" | "warning" | "info")
-        : "high";
-      const stream = await investigate(wd, flags.type as any, flags.watch, {
-        webhookUrl: flags.webhook as string | undefined,
-        alertMin,
-      });
-      const { waitUntilExit, unmount } = render(
-        <App command="investigate" props={{ stream, onComplete: () => unmount() }} />
-      );
-      await waitUntilExit;
+      console.log(`  argus audit --share — shareable HTML`);
       break;
     }
 
@@ -205,10 +160,33 @@ async function main() {
         await initWorkspace(resolvedAuditPath, flags.company || "My Company");
         ensureDb(resolvedAuditPath);
       }
-      const stream = audit(resolvedAuditPath, { dryRun: flags.dryRun, nonInteractive: flags.nonInteractive });
+      const alertMin = ["critical", "high", "warning", "info"].includes(String(flags.alertMin))
+        ? (flags.alertMin as "critical" | "high" | "warning" | "info")
+        : "high";
+      const stream = audit(resolvedAuditPath, {
+        dryRun: flags.dryRun,
+        nonInteractive: flags.nonInteractive,
+        agentType: flags.type as any,
+        webhookUrl: flags.webhook as string | undefined,
+        alertMin,
+      });
       for await (const event of stream) {
         if (event.type === "step") console.log(`  ${event.message}`);
         if (event.type === "finding") console.log(`  ${event.finding.id} | ${event.finding.title}`);
+      }
+      if (flags.share && !flags.dryRun) {
+        const { generateReport } = await import("./commands/report");
+        const { writeShareReport } = await import("./commands/share");
+        const report = await generateReport(flags.period as string | undefined);
+        const outPath = await writeShareReport(resolvedAuditPath, report, { out: flags.out as string | undefined });
+        console.log(`  Shared:          ${outPath}`);
+        if (flags.open) {
+          try {
+            const { exec } = await import("child_process");
+            const cmd = process.platform === "win32" ? `start "" "${outPath}"` : process.platform === "darwin" ? `open "${outPath}"` : `xdg-open "${outPath}"`;
+            exec(cmd);
+          } catch { console.log("  (could not auto-open browser)"); }
+        }
       }
       break;
     }
@@ -329,30 +307,7 @@ async function main() {
     }
 
     case "report": {
-      const wd = wsDir || cwd;
-      if (!ensureDb(wd)) { console.log("No workspace found. Run `argus init` first."); break; }
-      const report = await generateReport(flags.period);
-      console.log(`\n  Report — ${report.period}`);
-      console.log(`  ${"─".repeat(40)}`);
-      console.log(`  Total findings:  ${report.summary.total}`);
-      console.log(`  Open:            ${report.summary.open}`);
-      console.log(`  Critical:        ${report.summary.critical}`);
-      console.log(`  Resolved:        ${report.summary.resolved}`);
-      console.log(`  Dismissed:       ${report.summary.dismissed}`);
-      console.log(`  Total impact:    ${report.summary.totalImpact.toLocaleString()} ${report.summary.currency}`);
-      console.log(`  Recoverable:     ${report.summary.moneyFound.toLocaleString()} ${report.summary.currency} (open + resolved)`);
-      if (flags.share) {
-        const { writeShareReport } = await import("./commands/share");
-        const outPath = await writeShareReport(wd, report, { out: flags.out as string | undefined });
-        console.log(`  Shared:          ${outPath}`);
-        if (flags.open) {
-          try {
-            const { exec } = await import("child_process");
-            const cmd = process.platform === "win32" ? `start "" "${outPath}"` : process.platform === "darwin" ? `open "${outPath}"` : `xdg-open "${outPath}"`;
-            exec(cmd);
-          } catch { console.log("  (could not auto-open browser)"); }
-        }
-      }
+      console.log("  `report` moved into `audit --share` — run `argus audit --share`.");
       break;
     }
 
@@ -393,6 +348,10 @@ async function main() {
     }
 
     default: {
+      if (command === "ingest" || command === "investigate") {
+        console.log(`  \`argus ${command}\` was folded into \`argus audit\` — run \`argus audit <path> [--share] [--type <agent>]\`.`);
+        break;
+      }
       console.log(BANNER.join("\n"));
       console.log(`  ${col.gray(VERSION)}  ${col.cyan(WORDMARK)}`);
       if (!wsDir) {

@@ -1,6 +1,6 @@
 # AI Spend Auditor
 
-Autonomous financial investigation engine for startups. Ingests financial data (CSVs, PDFs), runs up to 7 LangGraph-based investigation agents, and surfaces structured findings with evidence chains.
+Autonomous financial investigation engine for startups. Ingests financial data (CSVs, PDFs), runs 7 deterministic investigation agents, and surfaces structured findings with evidence chains.
 
 ## Installation
 
@@ -8,15 +8,18 @@ Autonomous financial investigation engine for startups. Ingests financial data (
 # Prerequisites: Bun >= 1.2
 curl -fsSL https://bun.sh/install | bash
 
-# Clone and install
+# Install (no clone needed)
+bun install --global argus-audit
+argus --help
+```
+
+From source instead:
+
+```bash
 git clone <repo>
 cd argus
 bun install
-
-# Make `argus` available everywhere (uses your Bun runtime)
 bun install --global .
-argus --help
-argus init --company "Acme Corp"
 ```
 
 Alternative: standalone binary (no Bun required at runtime, CSV/XLSX
@@ -32,56 +35,45 @@ bun run compile:mac   # dist/argus-mac (macOS arm64)
 
 ```bash
 # Initialize workspace
-bun run src/cli/index.tsx init --company "Acme Corp"
+argus init --company "Acme Corp"
 
-# Fastest path: drop a folder of exports, classify + ingest + investigate in one go
-audit audit ./your-exports/
-
-# Or ingest files individually (advanced)
-audit ingest transactions.csv
-audit ingest subscriptions.csv
-audit ingest expense-reports.csv
-audit ingest invoices/inv-001.pdf
-
-# Run investigation (all 7 agents)
-audit investigate
+# Main verb: ingest + investigate a file or folder in one go
+argus audit ./your-exports/
+argus audit transactions.csv --share
 
 # Browse results
-audit findings
-audit findings --status open --severity critical
-audit findings --type duplicate-payments
+argus findings
+argus findings --status open --severity critical
+argus findings --type duplicate-payments
 
 # Deep-dive a finding
-audit explain FINDING-003
-audit explain FINDING-003 --evidence --trace
+argus explain FINDING-003
+argus explain FINDING-003 --evidence --trace
 
 # Submit feedback (triggers calibration)
-audit feedback FINDING-003 --dismiss --reason "Manual review OK"
-audit feedback FINDING-003 --resolve --reason "Fixed with vendor"
+argus feedback FINDING-003 --dismiss --reason "Manual review OK"
+argus feedback FINDING-003 --resolve --reason "Fixed with vendor"
 
-# System status and reports
-audit status
-audit report
-audit report --period Q1-2026
-
-# Continuous monitoring
-audit investigate --watch
+# System status, digest, web viewer, chat
+argus status
+argus digest
+argus web --open
+argus chat
 ```
 
 ## Commands
 
 | Command | Description |
 |---------|-------------|
-| `audit init` | Initialize workspace, create `.audit/` directory and config |
-| `audit ingest <path>` | Ingest CSV or PDF financial data |
-| `audit investigate` | Run investigation engine against all active agents |
-| `audit investigate --type <agent>` | Run a single agent |
-| `audit investigate --watch` | Continuous monitoring (30s polling) |
-| `audit findings` | List findings with optional filters |
-| `audit explain <id>` | Deep-dive a finding with evidence and trace |
-| `audit feedback <id>` | Submit resolve/dismiss/escalate feedback |
-| `audit status` | System health, agent activation, data source stats |
-| `audit report` | Generate plain-text findings summary |
+| `argus init` | Initialize workspace, create `.audit/` directory and config |
+| `argus audit [path]` | Ingest + investigate a file or folder (main verb) |
+| `argus findings` | List findings with optional filters |
+| `argus explain <id>` | Deep-dive a finding with evidence and trace |
+| `argus feedback <id>` | Submit resolve/dismiss/escalate feedback |
+| `argus digest` | Weekly markdown digest |
+| `argus status` | System health, agent activation, data source stats |
+| `argus web` | Local web viewer (charts, runway simulator, findings) |
+| `argus chat` | Interactive agentic chat mode |
 
 ### Filter Flags
 
@@ -89,32 +81,37 @@ audit investigate --watch
 |------|-----------|--------|
 | `--status` | findings | `open`, `resolved`, `dismissed` |
 | `--severity` | findings | `critical`, `high`, `warning`, `info` |
-| `--type` | findings, investigate | Agent name, e.g. `duplicate-payments` |
+| `--type` | findings, audit | Agent name, e.g. `duplicate-payments` |
 | `--since` | findings | Number of days, e.g. `30` |
 | `--evidence` | explain | Show evidence chain |
 | `--trace` | explain | Show chronological scratchpad events |
-| `--period` | report | Period label, e.g. `Q1-2026` |
+| `--period` | digest | Period label, e.g. `Q1-2026` |
+| `--share` | audit | Write shareable HTML report after the run |
 
 ## Architecture
 
 ```
-audit ingest → Normalization Layer → SQLite (bun:sqlite)
-                                       ↓
-audit investigate → Trigger Router → Supervisor Agent
-                                       ↓
-                              Per-Agent LangGraph State Machine
-                              (classify → retrieve → compare → score → loop → generate)
-                                       ↓
-                              SQLite Findings Table + JSONL Scratchpad
-                                       ↓
+audit [path] → Normalization Layer → SQLite (bun:sqlite)
+                                        ↓
+              Supervisor Agent (7 deterministic detectors)
+                                        ↓
+                               SQLite Findings Table + JSONL Scratchpad
+                                        ↓
 audit findings / audit explain → Ink+React Terminal UI
-                                       ↓
+                                        ↓
 audit feedback → Human Feedback Loop → Confidence Calibration
 ```
 
+### Agentic chat
+
+`argus chat` adds an LLM loop on top: the model plans tool calls
+(`list_findings`, `get_finding`, `get_status`, `run_investigation`) from
+your words. Detection stays deterministic; the model orchestrates and explains.
+
 ### Investigation Agents
 
-All 7 agents share the same 6-node LangGraph state machine pattern:
+All 7 agents share the same deterministic state machine pattern
+(classify → retrieve → compare → score → loop → generate):
 
 | Agent | Detects | Data Required |
 |-------|---------|--------------|
