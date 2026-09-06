@@ -22,7 +22,7 @@ argus --dir $WD findings
 Start-Sleep -Seconds 2
 
 Write-Host "`n=== 4/6 shareable report ===" -ForegroundColor Cyan
-argus --dir $WD report --share
+argus --dir $WD audit --share
 Start-Sleep -Seconds 2
 
 Write-Host "`n=== 5/6 digest ===" -ForegroundColor Cyan

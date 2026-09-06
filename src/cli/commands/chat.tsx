@@ -87,6 +87,15 @@ export async function* handleChatMessage(
         yield { type: "done", durationMs: 0 };
         return;
       }
+      case "digest": {
+        const { generateDigest } = await import("./digest");
+        const text = await generateDigest(undefined);
+        for (const line of text.split("\n")) {
+          yield { type: "agent_thinking", message: line };
+        }
+        yield { type: "done", durationMs: 0 };
+        return;
+      }
       case "clear":
         yield { type: "clear" };
         yield { type: "done", durationMs: 0 };
@@ -99,13 +108,14 @@ export async function* handleChatMessage(
             { name: "/findings", description: "List all findings" },
             { name: "/investigate", description: "Run investigation agents" },
             { name: "/status", description: "Show workspace status" },
+            { name: "/digest", description: "Weekly markdown summary" },
             { name: "/cd <path>", description: "Switch workspace directory" },
             { name: "/clear", description: "Clear chat history" },
             { name: "/help", description: "Show this help" },
             { name: "findings", description: "List all findings" },
             { name: "investigate", description: "Run investigation agents" },
             { name: "explain <id>", description: "Inspect a finding" },
-            { name: "ingest <path>", description: "Ingest a file" },
+            { name: "audit <path>", description: "Ingest + investigate a folder" },
             { name: "exit", description: "Quit chat mode" },
           ],
         };
@@ -115,10 +125,10 @@ export async function* handleChatMessage(
     }
   }
 
-  if (recCount === 0 && !/^(ingest|init|demo|help|exit|quit)\b/.test(lower)) {
+  if (recCount === 0 && !/^(audit|init|help|exit|quit)\b/.test(lower)) {
     yield { type: "agent_thinking", message: "No financial data ingested yet." };
-    yield { type: "tool_start", tool: "ingest", args: "check", toolCallId: "empty-check" };
-    yield { type: "tool_end", tool: "ingest", summary: "Run `argus ingest <file>` first, or try `argus demo`.", durationMs: 0, toolCallId: "empty-check" };
+    yield { type: "tool_start", tool: "audit", args: "check", toolCallId: "empty-check" };
+    yield { type: "tool_end", tool: "audit", summary: "Run `argus audit <folder>` first (exit chat, then audit).", durationMs: 0, toolCallId: "empty-check" };
     yield { type: "done", durationMs: 0 };
     return;
   }

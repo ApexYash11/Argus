@@ -1,6 +1,6 @@
 import fs from "fs";
 import path from "path";
-import type { AuditEvent, SchemaDetectionResult } from "../../model/types";
+import type { AuditEvent, AgentType, Severity, SchemaDetectionResult } from "../../model/types";
 import { inspectFile } from "../../ingest/file-inspector";
 import { sampleRows } from "../../ingest/smart-sampler";
 import { detectSchema } from "../../ingest/schema-detector";
@@ -90,7 +90,7 @@ async function classifyFile(filePath: string, forceRefresh?: boolean): Promise<F
 
 export async function* audit(
   auditPath: string,
-  options: { dryRun?: boolean; nonInteractive?: boolean; forceRefresh?: boolean } = {}
+  options: { dryRun?: boolean; nonInteractive?: boolean; forceRefresh?: boolean; agentType?: AgentType; webhookUrl?: string; alertMin?: Severity } = {}
 ): AsyncGenerator<AuditEvent> {
   const resolvedPath = path.resolve(auditPath);
   const isDir = fs.statSync(resolvedPath).isDirectory();
@@ -182,7 +182,10 @@ export async function* audit(
 
   let totalFindings = 0;
   try {
-    const investigateStream = await investigate(resolvedPath);
+    const investigateStream = await investigate(resolvedPath, options.agentType, false, {
+      webhookUrl: options.webhookUrl,
+      alertMin: options.alertMin,
+    });
     for await (const event of investigateStream) {
       if (event.type === "step") {
         yield { type: "step", agent: "audit", message: `  ${event.message}` };
@@ -220,7 +223,7 @@ export async function* audit(
   yield { type: "step", agent: "audit", message: `Schema cache:      ${cacheStats.hits} hit(s), ${cacheStats.misses} miss(es)` };
   yield { type: "step", agent: "audit", message: "" };
   yield { type: "step", agent: "audit", message: "Next steps:" };
-  yield { type: "step", agent: "audit", message: "  argus report --share   forwardable HTML report" };
+  yield { type: "step", agent: "audit", message: "  argus audit --share   forwardable HTML report" };
   yield { type: "step", agent: "audit", message: "  argus digest           weekly markdown summary" };
   yield { type: "step", agent: "audit", message: "  argus status           system health + spend & burn" };
   yield { type: "done", totalFindings, durationMs: elapsedMs };

@@ -1,6 +1,6 @@
 {
-  "name": "ai-spend-auditor",
-  "version": "1.0.0-alpha",
+  "name": "argus-audit",
+  "version": "0.1.0",
   "description": "Autonomous financial investigation system for startups",
   "type": "module",
   "module": "src/cli/index.tsx",
@@ -16,7 +16,11 @@
     "compile:mac": "bun build --compile --target=bun-darwin-arm64 src/cli/index.tsx --outfile dist/argus-mac",
     "demo": "rm -rf .audit && bun run src/cli/index.tsx init --company Demo && bun run src/cli/index.tsx ingest test-data/subscriptions.csv && bun run src/cli/index.tsx ingest test-data/usage.csv && bun run src/cli/index.tsx ingest test-data/transactions.csv && bun run src/cli/index.tsx ingest test-data/expense-reports.csv && bun run src/cli/index.tsx ingest test-data/committed-expenses.csv && bun run src/cli/index.tsx ingest test-data/test-invoices/inv-001.pdf && bun run src/cli/index.tsx investigate && bun run src/cli/index.tsx findings && bun run src/cli/index.tsx status && bun run src/cli/index.tsx report"
   },
-  "private": true,
+  "private": false,
+  "files": [
+    "src",
+    "README.md"
+  ],
   "devDependencies": {
     "@types/bun": "latest"
   },
@@ -29,10 +33,12 @@
     "ink": "^7.1.0",
     "ink-spinner": "^5.0.0",
     "ink-table": "^3.1.0",
+    "ink-text-input": "^6.0.0",
     "meow": "^14.1.0",
     "pdf-parse": "^2.4.5",
     "react": "^19.2.7",
     "react-devtools-core": "^7.0.1",
+    "xlsx": "^0.18.5",
     "zod": "^4.4.3"
   }
 }
