@@ -50,6 +50,7 @@ function matchColumn(headers: string[], keywords: string[]): string | null {
   for (const header of headers) {
     for (let ki = 0; ki < kwNormalized.length; ki++) {
       const score = scoreHeader(header, kwNormalized[ki]!);
+      if (score <= 0) continue; // never match on zero score (was: first header always won ties)
       if (score > bestScore || (score === bestScore && ki < bestKwIdx)) {
         bestScore = score;
         bestHeader = header;

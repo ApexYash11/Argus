@@ -20,12 +20,12 @@ export function getCacheStats(): { hits: number; misses: number } {
 }
 
 const KEYWORD_MAP: { [key: string]: string[] } = {
-  vendor_col: ["vendor", "party", "name", "supplier", "payee", "merchant", "department", "dept", "counterparty", "account_name", "costcenter", "costcentre", "cc", "businessunit", "business_unit"],
-  amount_col: ["amount", "debit", "total", "sum", "value", "charge", "fee", "out_amount", "outamount", "payment", "paid"],
-  amount_col_credit: ["credit", "inflow", "deposit", "in_amount", "inamount", "received", "receipt"],
-  date_col: ["date", "txn_date", "transaction_date", "posting_date", "period", "value_date", "invoice_date"],
-  reference_col: ["ref", "reference", "id", "number", "invoice", "glid", "check", "transaction_id", "txn_id"],
-  description_col: ["desc", "description", "memo", "narrative", "details", "notes", "particulars", "remarks"],
+  vendor_col: ["vendor", "party", "name", "supplier", "payee", "payee_name", "merchant", "department", "dept", "counterparty", "account_name", "costcenter", "costcentre", "cc", "businessunit", "business_unit", "recipient", "recipient_name", "agency", "agency_name", "grantee", "contractor", "customer", "client", "beneficiary"],
+  amount_col: ["amount", "debit", "total", "sum", "value", "charge", "fee", "out_amount", "outamount", "payment", "paid", "amount_paid", "gross_amount", "net_amount", "disbursement", "disbursed", "award_amount", "obligation", "expenditure", "spend", "cost", "price", "balance"],
+  amount_col_credit: ["credit", "inflow", "deposit", "in_amount", "inamount", "received", "receipt", "inamount", "credit_amount"],
+  date_col: ["date", "txn_date", "transaction_date", "posting_date", "posted_date", "period", "value_date", "invoice_date", "check_date", "payment_date", "paid_date", "due_date", "period_start", "period_of_performance_start", "start_date", "fiscal_year", "year", "month", "day"],
+  reference_col: ["ref", "reference", "id", "number", "invoice", "glid", "check", "transaction_id", "txn_id", "check_number", "voucher", "document", "po_number", "contract_number", "award_id", "confirmation"],
+  description_col: ["desc", "description", "memo", "narrative", "details", "notes", "particulars", "remarks", "gl_description", "line_description", "purpose", "title", "comment"],
   currency_col: ["currency", "curr", "ccy", "cur"],
 };
 
@@ -49,7 +49,62 @@ function fuzzyMatchColumn(headers: string[], columnName: string): string | null 
   return bestScore >= COLUMN_MATCH_THRESHOLD ? best : null;
 }
 
-function deterministicFallback(
+function statsFor(columnStats: ColumnStats[], name: string): ColumnStats | undefined {
+  return columnStats.find((s) => s.columnName === name);
+}
+
+/**
+ * Content-type fallback: when no header keyword matches, use measured column
+ * content instead of forcing a wrong column. Returns null (with warning) when
+ * no column actually looks like the role — nulls are safe, wrong maps corrupt.
+ */
+function fallbackByContent(
+  headers: string[],
+  columnStats: ColumnStats[],
+  role: "amount" | "date" | "vendor",
+  taken: Set<string>,
+  warnings: string[]
+): string | null {
+  if (role === "amount") {
+    let best: string | null = null;
+    let bestRatio = 0.5; // require majority-numeric
+    for (const h of headers) {
+      if (taken.has(h)) continue;
+      const st = statsFor(columnStats, h);
+      const ratio = st?.numeric_ratio ?? 0;
+      const looks = st?.looks_like_amount ?? false;
+      const score = ratio + (looks ? 0.3 : 0);
+      if (score > bestRatio) { bestRatio = score; best = h; }
+    }
+    if (best) warnings.push(`Amount column "${best}" inferred from content (no header match)`);
+    return best;
+  }
+  if (role === "date") {
+    for (const h of headers) {
+      if (taken.has(h)) continue;
+      const st = statsFor(columnStats, h);
+      if (st?.looks_like_date) {
+        warnings.push(`Date column "${h}" inferred from content (no header match)`);
+        return h;
+      }
+    }
+    return null;
+  }
+  // vendor: prefer a mostly-text column with many distinct values
+  let best: string | null = null;
+  let bestDistinct = 2;
+  for (const h of headers) {
+    if (taken.has(h)) continue;
+    const st = statsFor(columnStats, h);
+    if (!st) continue;
+    if (st.numeric_ratio > 0.3) continue;
+    if ((st.distinct_count ?? 0) > bestDistinct) { bestDistinct = st.distinct_count ?? 0; best = h; }
+  }
+  if (best) warnings.push(`Vendor column "${best}" inferred from content (no header match)`);
+  return best;
+}
+
+export function deterministicFallback(
   headers: string[],
   filePath: string,
   columnStats: ColumnStats[]
@@ -69,20 +124,39 @@ function deterministicFallback(
 
   const vendor_col = matchColumn(headers, KEYWORD_MAP.vendor_col ?? []);
 
+  const taken = new Set(
+    [amount_col, amount_col_credit, vendor_col].filter((v): v is string => !!v)
+  );
+  let finalAmount = amount_col;
+  let finalVendor = vendor_col;
+  if (!finalAmount) {
+    finalAmount = fallbackByContent(headers, columnStats, "amount", taken, warnings);
+    if (finalAmount) taken.add(finalAmount);
+  }
+  if (!finalVendor) {
+    finalVendor = fallbackByContent(headers, columnStats, "vendor", taken, warnings);
+    if (finalVendor) taken.add(finalVendor);
+  }
+  let finalDate = date_col;
+  if (!finalDate) {
+    finalDate = fallbackByContent(headers, columnStats, "date", taken, warnings);
+    if (finalDate) taken.add(finalDate);
+  }
+
   const expenseRowsOnly = hasDebitCredit || String(dataType) === "general-ledger";
 
-  if (!vendor_col) warnings.push("No vendor column detected");
-  if (!date_col) warnings.push("No date column detected");
+  if (!finalVendor) warnings.push("No vendor column detected");
+  if (!finalDate) warnings.push("No date column detected");
 
-  const criticalColumns = [vendor_col, amount_col, date_col].filter(Boolean).length;
+  const criticalColumns = [finalVendor, finalAmount, finalDate].filter(Boolean).length;
   const computedConfidence = 0.3 + (criticalColumns / 3) * 0.4 + (hasDebitCredit ? 0.1 : 0);
   const confidence = Math.round(Math.min(computedConfidence, 0.85) * 10) / 10;
 
   return {
-    vendor_col,
-    amount_col,
+    vendor_col: finalVendor,
+    amount_col: finalAmount,
     amount_col_credit,
-    date_col,
+    date_col: finalDate,
     reference_col,
     description_col,
     currency_col,
