@@ -78,7 +78,10 @@ export default function InitWizard({ cwd, initial, onComplete }: Props) {
 
   return (
     <Box flexDirection="column" height="100%" paddingX={1}>
-      <Box marginBottom={1}>
+      <Box flexDirection="column" marginBottom={1}>
+        {BANNER.map((line, i) => (
+          <Text key={i} color={C.cyan}>{line}</Text>
+        ))}
         <Text color={C.muted}>ARGUS {VERSION}  {SYM.dot}  {cwd}</Text>
       </Box>
 
