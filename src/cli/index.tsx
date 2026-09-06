@@ -46,23 +46,17 @@ const cli = meow(
     $ argus <command> [options]
 
   Commands
-    init [--wizard]                Initialize workspace (--wizard for guided setup)
-    audit [path] [--share]         Ingest + investigate a file or folder (main verb)
-    findings [--status] [--type]   Browse findings
-    explain <finding-id>           Deep-dive a finding
-    feedback <finding-id>          Submit review action
-    digest [--period]              Weekly markdown digest
-    status [--fp-rate]             System health and agent FP/TP rates
-    web [--port] [--open]          Local web viewer (127.0.0.1 only)
-    chat                           Interactive chat mode
+    init                  Start here — set up a workspace
+    audit <folder>        Check your spending (does everything)
+    findings              See what was found
+    chat                  Ask in plain English
+
+  More: explain, feedback, digest, status, web — see README.
 
   Examples
     $ argus init --company "Acme Corp"
     $ argus audit ./your-exports/
-    $ argus audit --share
-    $ argus findings --status open --severity critical
-    $ argus explain FINDING-003 --trace
-    $ argus feedback FINDING-003 --resolve "Fixed with vendor"
+    $ argus findings --status open
     $ argus chat
 `,
   {
